@@ -1,11 +1,11 @@
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from engines import detect_anomalies
-from models import Quotation, get_db
-from api.schemas import DealHealthOut
+from models import AuditLog, Quotation, get_db
+from api.schemas import DealHealthActionIn, DealHealthActionOut, DealHealthOut
 
 router = APIRouter(tags=["deal-health"])
 
@@ -19,8 +19,10 @@ def _avg_discount(quotation: Quotation) -> float:
     return sum(float(line.discount_pct) for line in quotation.lines) / len(quotation.lines)
 
 
-@router.get("/deal-health", response_model=DealHealthOut)
-def get_deal_health(db: Session = Depends(get_db)):
+def compute_deal_health(db: Session) -> dict:
+    """Shared by GET /deal-health and GET /dashboard/summary's at_risk_deals
+    count, so both read the exact same definition of "at risk".
+    """
     quotations = db.query(Quotation).all()
     now = datetime.now(timezone.utc)
 
@@ -75,8 +77,45 @@ def get_deal_health(db: Session = Depends(get_db)):
                 }
             )
 
-    return DealHealthOut(
-        stalled_deals=stalled_deals,
-        discount_anomalies=discount_anomalies,
-        delivery_slippage=delivery_slippage,
-    )
+    return {
+        "stalled_deals": stalled_deals,
+        "discount_anomalies": discount_anomalies,
+        "delivery_slippage": delivery_slippage,
+    }
+
+
+@router.get("/deal-health", response_model=DealHealthOut)
+def get_deal_health(db: Session = Depends(get_db)):
+    return DealHealthOut(**compute_deal_health(db))
+
+
+# PDF B9: "an automated nudge or escalation action can be triggered from an
+# alert". Both write to AuditLog so the action shows up in the dashboard's
+# recent-activity feed and in any per-quotation history view.
+
+@router.post("/deal-health/{quotation_id}/nudge", response_model=DealHealthActionOut)
+def nudge_quotation(quotation_id: int, payload: DealHealthActionIn, db: Session = Depends(get_db)):
+    quotation = db.get(Quotation, quotation_id)
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    db.add(AuditLog(
+        entity_type="quotation", entity_id=quotation_id, action="nudge",
+        reason=payload.note or "Nudged from Deal Health dashboard",
+        after={"actor": payload.user},
+    ))
+    db.commit()
+    return DealHealthActionOut(status="ok", action="nudge", quotation_id=quotation_id)
+
+
+@router.post("/deal-health/{quotation_id}/escalate", response_model=DealHealthActionOut)
+def escalate_quotation(quotation_id: int, payload: DealHealthActionIn, db: Session = Depends(get_db)):
+    quotation = db.get(Quotation, quotation_id)
+    if not quotation:
+        raise HTTPException(status_code=404, detail="Quotation not found")
+    db.add(AuditLog(
+        entity_type="quotation", entity_id=quotation_id, action="escalate",
+        reason=payload.note or "Escalated from Deal Health dashboard",
+        after={"actor": payload.user},
+    ))
+    db.commit()
+    return DealHealthActionOut(status="ok", action="escalate", quotation_id=quotation_id)

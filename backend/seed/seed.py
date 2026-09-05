@@ -32,6 +32,7 @@ from models import (
     ProductVariant,
     Quotation,
     QuotationLine,
+    Subscription,
     SubscriptionPlan,
     UpsellRule,
     User,
@@ -85,6 +86,12 @@ WAREHOUSE_SHIPPING = {
     "East Depot": {"shipping_cost_per_unit": 6.75, "shipment_fixed_cost": 18.00},
 }
 
+# PDF A4: "configure ... replenishment rules per warehouse".
+WAREHOUSE_REPLENISHMENT = {
+    "Main Warehouse": {"reorder_point": 10, "reorder_qty": 40},
+    "East Depot": {"reorder_point": 5, "reorder_qty": 25},
+}
+
 
 def seed():
     Base.metadata.create_all(bind=engine)
@@ -108,6 +115,7 @@ def seed():
                 {"product_id": "CARE-PLAN-2YR", "qty": 999},
             ],
             **WAREHOUSE_SHIPPING["Main Warehouse"],
+            replenishment_rules=WAREHOUSE_REPLENISHMENT["Main Warehouse"],
         )
         east_depot = Warehouse(
             name="East Depot",
@@ -119,6 +127,7 @@ def seed():
                 {"product_id": "CARE-PLAN-2YR", "qty": 999},
             ],
             **WAREHOUSE_SHIPPING["East Depot"],
+            replenishment_rules=WAREHOUSE_REPLENISHMENT["East Depot"],
         )
         db.add_all([main_wh, east_depot])
 
@@ -224,6 +233,11 @@ def seed():
             qty=5, unit_price=199.00, discount_pct=8,
             category_limit_pct=tiers_by_name["Silver"].category_limits["Subscription"],
         ))
+        db.add(Subscription(
+            customer_name="Beta Industries", plan="Care Plan 2yr", cycle="Monthly",
+            next_bill_date=date.today() + timedelta(days=18), status="active",
+            amount=5 * 199.00 * (1 - 8 / 100), qty=5, quotation_id=beta.id,
+        ))
 
         # --- Quotation 3: Delta LLC (Bronze) — within limits, draft, and overdue
         # on delivery to demo the deal-health delivery-slippage indicator ---
@@ -243,8 +257,13 @@ def seed():
         print(
             "Seed complete: 4 users, 2 warehouses, 3 discount tiers, 5 products "
             "(+1 variant, 1 price list entry, 1 upsell rule), 1 subscription plan, "
-            "3 customers (+1 portal user), 3 quotations, 1 audit log, 1 negotiation request.\n"
-            f"Test login password for every seeded user: {SEED_PASSWORD}"
+            "1 subscription, 3 customers (+1 portal user), 3 quotations, 1 audit log, "
+            "1 negotiation request.\n"
+            f"Test login password for every seeded user: {SEED_PASSWORD}\n"
+            "All /quotations, /approvals, /warehouses, /products, /subscriptions, "
+            "/invoices, /deal-health, /discount-tiers, /reports, /dashboard, "
+            "/quotations/*/upsell-suggestions and /fulfillment/* endpoints now "
+            "require Authorization: Bearer <token> from POST /auth/login."
         )
     finally:
         db.close()

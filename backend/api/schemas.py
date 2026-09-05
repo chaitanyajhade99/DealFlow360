@@ -67,12 +67,14 @@ class ApprovalOut(BaseModel):
     stage: str
     assigned_to: Optional[str] = None
     history: list[dict[str, Any]] = []
+    flagged_lines: list[dict[str, Any]] = []
 
 
 class ApprovalDecisionIn(BaseModel):
     action: str  # approve | reject | return
     user: str
     note: Optional[str] = None
+    user_id: Optional[int] = None  # optional, for AuditLog attribution
 
 
 # ---- Fulfillment ----
@@ -94,6 +96,9 @@ class SubscriptionCreate(BaseModel):
     cycle: str
     next_bill_date: Optional[date] = None
     status: str = "active"
+    amount: Optional[float] = None
+    qty: Optional[int] = None
+    quotation_id: Optional[int] = None
 
 
 class SubscriptionOut(SubscriptionCreate):
@@ -236,6 +241,7 @@ class WarehouseIn(BaseModel):
     stock: list[dict[str, Any]] = []
     shipping_cost_per_unit: float = 0
     shipment_fixed_cost: float = 0
+    replenishment_rules: dict[str, Any] = {}
 
 
 class WarehouseOut(WarehouseIn):
@@ -326,11 +332,8 @@ class SubscriptionUpdate(BaseModel):
     cycle: Optional[str] = None
     next_bill_date: Optional[date] = None
     status: Optional[str] = None
-
-
-class SubscriptionCancelIn(BaseModel):
-    reason: Optional[str] = None
-    refund_amount: Optional[float] = None  # rep/finance-supplied; Subscription has no amount field to prorate from
+    amount: Optional[float] = None
+    qty: Optional[int] = None
 
 
 class CreditNoteOut(BaseModel):
@@ -343,6 +346,25 @@ class CreditNoteOut(BaseModel):
     created_at: datetime
 
 
+class SubscriptionUpdateOut(BaseModel):
+    subscription: SubscriptionOut
+    # Real mid-cycle proration (PDF B7), computed from amount/qty deltas
+    # against days remaining in the current billing cycle. Positive means an
+    # additional charge is owed (no invoice auto-generated for it yet -- raise
+    # one manually via POST /invoices); negative means a CreditNote was
+    # auto-created for the difference.
+    proration_amount: Optional[float] = None
+    credit_note: Optional[CreditNoteOut] = None
+
+
+class SubscriptionCancelIn(BaseModel):
+    reason: Optional[str] = None
+    # Optional override. When omitted and the subscription has amount +
+    # next_bill_date set, the refund is computed automatically as
+    # amount * (days_remaining_in_cycle / cycle_length_days).
+    refund_amount: Optional[float] = None
+
+
 # ---- Reporting ----
 
 class ReportSummaryOut(BaseModel):
@@ -350,3 +372,25 @@ class ReportSummaryOut(BaseModel):
     avg_approval_time_hours: Optional[float] = None
     top_discounted_product: Optional[str] = None
     matching_quotations: list[dict[str, Any]]
+
+
+# ---- Dashboard (PDF wireframe screen 2) ----
+
+class DashboardSummaryOut(BaseModel):
+    pending_approvals: int
+    open_quotations: int
+    at_risk_deals: int
+    recent_activity: list[dict[str, Any]] = []
+
+
+# ---- Deal health actions (nudge / escalate) ----
+
+class DealHealthActionIn(BaseModel):
+    user: Optional[str] = None
+    note: Optional[str] = None
+
+
+class DealHealthActionOut(BaseModel):
+    status: str
+    action: str
+    quotation_id: int

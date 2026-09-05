@@ -12,6 +12,10 @@ class Warehouse(Base):
     stock = Column(JSON, nullable=False, default=list)  # [{product_id, qty}]
     shipping_cost_per_unit = Column(Numeric(10, 2), nullable=False, default=0)
     shipment_fixed_cost = Column(Numeric(10, 2), nullable=False, default=0)
+    # PDF A4: "configure stock levels and replenishment rules per warehouse".
+    # Free-form json (e.g. {"reorder_point": 10, "reorder_qty": 50}) since the
+    # PDF doesn't pin down a fixed shape.
+    replenishment_rules = Column(JSON, nullable=False, default=dict)
 
 
 class FulfillmentSplit(Base):

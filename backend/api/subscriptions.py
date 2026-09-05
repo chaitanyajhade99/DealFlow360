@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -10,9 +12,25 @@ from api.schemas import (
     SubscriptionPlanIn,
     SubscriptionPlanOut,
     SubscriptionUpdate,
+    SubscriptionUpdateOut,
 )
 
 router = APIRouter(tags=["subscriptions"])
+
+# PDF A5: "monthly, quarterly, yearly" -- fixed day-counts, not calendar-exact,
+# which is the standard simplification for proration math without a real
+# billing calendar.
+CYCLE_DAYS = {"Monthly": 30, "Quarterly": 90, "Yearly": 365}
+
+
+def _cycle_days(cycle: str | None) -> int:
+    return CYCLE_DAYS.get(cycle or "", 30)
+
+
+def _days_remaining(subscription: Subscription) -> int:
+    if not subscription.next_bill_date:
+        return _cycle_days(subscription.cycle)
+    return max((subscription.next_bill_date - date.today()).days, 0)
 
 
 @router.post("/subscriptions", response_model=SubscriptionOut)
@@ -37,36 +55,70 @@ def get_subscription(id: int, db: Session = Depends(get_db)):
     return subscription
 
 
-@router.patch("/subscriptions/{id}", response_model=SubscriptionOut)
+@router.patch("/subscriptions/{id}", response_model=SubscriptionUpdateOut)
 def update_subscription(id: int, payload: SubscriptionUpdate, db: Session = Depends(get_db)):
-    """PDF B7: "Modify Subscription" — mid-cycle plan/cycle changes.
-    Subscription has no qty/amount field to prorate a charge against; actual
-    proration math lives in SubscriptionPlan.proration_rule for when that's
-    wired to real billing.
+    """PDF B7: "Modify Subscription" — mid-cycle plan/qty/amount changes.
+
+    Real proration: the amount delta (new - old) is scaled by the fraction of
+    the current billing cycle remaining. A downgrade (negative proration)
+    auto-creates a CreditNote, mirroring cancel's behaviour. An upgrade
+    (positive proration) is reported but not auto-invoiced -- raise that
+    manually via POST /invoices, since Invoice requires a quotation_id and a
+    subscription may exist without one.
     """
     subscription = db.get(Subscription, id)
     if not subscription:
         raise HTTPException(status_code=404, detail="Subscription not found")
+
+    old_amount = float(subscription.amount) if subscription.amount is not None else None
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(subscription, key, value)
+    new_amount = float(subscription.amount) if subscription.amount is not None else None
+
+    proration_amount = None
+    credit_note = None
+    if old_amount is not None and new_amount is not None and old_amount != new_amount:
+        days_remaining = _days_remaining(subscription)
+        cycle_days = _cycle_days(subscription.cycle)
+        proration_amount = round((new_amount - old_amount) * (days_remaining / cycle_days), 2)
+        if proration_amount < 0:
+            credit_note = CreditNote(
+                subscription_id=id, amount=abs(proration_amount),
+                reason="Prorated downgrade on subscription modify",
+            )
+            db.add(credit_note)
+
     db.commit()
     db.refresh(subscription)
-    return subscription
+    if credit_note:
+        db.refresh(credit_note)
+    return SubscriptionUpdateOut(
+        subscription=subscription, proration_amount=proration_amount, credit_note=credit_note,
+    )
 
 
 @router.post("/subscriptions/{id}/cancel", response_model=SubscriptionOut)
 def cancel_subscription(id: int, payload: SubscriptionCancelIn, db: Session = Depends(get_db)):
     """PDF B7: "Cancel Subscription" with automatic partial refund / credit
-    note trigger. refund_amount is caller-supplied since Subscription has no
-    amount field to prorate from automatically.
+    note trigger. If refund_amount isn't supplied, it's computed as
+    amount * (days_remaining_in_cycle / cycle_length_days) when the
+    subscription has both amount and next_bill_date set; otherwise no refund
+    is created (there's nothing to prorate from).
     """
     subscription = db.get(Subscription, id)
     if not subscription:
         raise HTTPException(status_code=404, detail="Subscription not found")
     subscription.status = "cancelled"
-    if payload.refund_amount:
+
+    refund_amount = payload.refund_amount
+    if refund_amount is None and subscription.amount is not None:
+        days_remaining = _days_remaining(subscription)
+        cycle_days = _cycle_days(subscription.cycle)
+        refund_amount = round(float(subscription.amount) * (days_remaining / cycle_days), 2)
+
+    if refund_amount:
         db.add(CreditNote(
-            subscription_id=id, amount=payload.refund_amount,
+            subscription_id=id, amount=refund_amount,
             reason=payload.reason or "Subscription cancelled",
         ))
     db.commit()

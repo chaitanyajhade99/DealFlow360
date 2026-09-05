@@ -21,11 +21,19 @@ Ask Person 1 for the password, or get it from Supabase → Project Settings →
 Database → Connect. Put it in `backend/.env` as `DATABASE_URL` (with
 `+psycopg2` after `postgresql`) — that file is gitignored, never commit it.
 
-**Auth (added 2026-09-05)**: `POST /auth/login` (internal) and `POST /portal/login`
-(customer) both return a JWT — `Authorization: Bearer <token>`. All `/portal/*`
-routes except `/portal/login` and `/portal/magic-link` require a customer-type
-token. Internal endpoints are NOT yet auth-enforced (deliberate — avoids
-breaking already-integrated calls; flagged in `API_CONTRACT.md`).
+**Auth (added 2026-09-05, enforced fleet-wide same day)**: `POST /auth/login`
+(internal) and `POST /portal/login` (customer) both return a JWT —
+`Authorization: Bearer <token>`. All `/portal/*` routes except `/portal/login`
+and `/portal/magic-link` require a customer-type token. **Every other
+endpoint in this doc now requires an internal-type token** — log in as one of
+the seeded users below first, then send `Authorization: Bearer <token>` on
+every call. A missing/invalid token gets `401`; a customer token on an
+internal route (or vice versa) gets `403`.
+
+**CORS**: enabled for all origins by default (`CORSMiddleware`), so a
+browser-based frontend on a different port/host can call this API directly.
+Set the `CORS_ORIGINS` env var (comma-separated) to restrict it for a real
+deployment.
 
 **Seeded test credentials** (same password for every seeded user):
 ```
@@ -101,10 +109,26 @@ line submission and the backend resolves it.
 | stage | text | `"sales_manager"` \| `"finance"` \| `"confirmed"` \| `"rejected"` \| `"returned"` |
 | assigned_to | text, nullable | reviewer name |
 | history | jsonb | list of `{user, action, note, at}` entries. `POST /quotations/{id}/submit` (added 2026-09-05) seeds this with one `{"action": "flagged", "user": "system", "reason": ..., "at": ...}` entry — `reason` is `score_risk()`'s plain-language explanation. `POST /approvals/{id}/decision` appends further entries with `action` `"approve"` \| `"reject"` \| `"return"`. |
+| flagged_lines | jsonb | **added 2026-09-05.** `score_risk()`'s per-line breakdown at submit/confirm time — `[{line, discount_given_pct, limit_allowed_pct, over_by_pct, line_id, product_id, category, line_value}]`. Backs wireframe screen 6's "Why This Quote Was Flagged" table directly; empty list on a LOW-risk approval with nothing flagged. |
 
 A quotation can have more than one `Approval` row over its lifetime (e.g. if
 returned then resubmitted); always take the most recently created one for
 "current" status unless the UI needs full history.
+
+**Routing note**: every approval now starts at `stage = "sales_manager"`,
+whether `blended_risk` is MEDIUM or HIGH. A MEDIUM approve goes straight to
+`"confirmed"`. A HIGH approve moves it to `stage = "finance"` instead, and it
+takes a *second* `POST /approvals/{id}/decision` (as finance) to reach
+`"confirmed"` — a real two-step chain, matching `discount_tiers
+.approval_chain.HIGH = "sales_manager_then_finance"`. (Fixed 2026-09-05 —
+earlier, HIGH was routed straight to a `"finance"`-only stage that a single
+approval fully cleared, skipping the manager step entirely.)
+
+`GET /approvals` (added 2026-09-05) lists all approvals, newest first;
+`?pending_only=true` filters to `stage` in `sales_manager`/`finance` (screen
+5's badge counts and filter). `GET /approvals/{id}` (added 2026-09-05) fetches
+one, for screen 6. Every decision via `POST /approvals/{id}/decision` also now
+writes an `audit_logs` row (see section 17) alongside the `history` entry.
 
 ## 5. `warehouses`
 
@@ -115,6 +139,7 @@ returned then resubmitted); always take the most recently created one for
 | stock | jsonb | list of `{product_id, qty}` |
 | shipping_cost_per_unit | numeric(10,2) | **added 2026-09-05**, default 0. Passed straight through to `engines.split_warehouse()` so it can compute real per-line shipping cost. |
 | shipment_fixed_cost | numeric(10,2) | **added 2026-09-05**, default 0. Flat per-shipment cost from this warehouse, also passed to the engine. |
+| replenishment_rules | jsonb | **added 2026-09-05**, default `{}`. Free-form (e.g. `{"reorder_point": 10, "reorder_qty": 40}`) — PDF A4's "replenishment rules per warehouse". Nothing currently *acts* on these values automatically (no reorder job); they're config data for the admin warehouse-setup screen to read/write. |
 
 ## 6. `fulfillment_splits`
 
@@ -136,10 +161,25 @@ returned then resubmitted); always take the most recently created one for
 | cycle | text | `"Monthly"` \| `"Quarterly"` \| `"Yearly"` |
 | next_bill_date | date, nullable | |
 | status | text | default `"active"` |
+| amount | numeric(12,2), nullable | **added 2026-09-05.** The current recurring charge. Set it on `POST /subscriptions` (or via `PATCH .../{id}`) to unlock real proration math below — leave it null and proration/refunds simply won't auto-compute. |
+| qty | integer, nullable | **added 2026-09-05.** Recurring seat/unit count, informational — not itself used in the proration formula (that's driven by `amount`). |
+| quotation_id | integer, FK -> quotations.id, nullable | **added 2026-09-05.** Links a subscription back to the quotation it was created from, when there is one. |
 
-Not currently linked to a `quotation_id` — contract's `Subscription` entity
-has no such FK. If the frontend needs to join a subscription back to its
-originating quotation, flag it; that'd be a contract change.
+**Real proration (added 2026-09-05)**: `PATCH /subscriptions/{id}` now
+accepts `amount`/`qty` and returns `{subscription, proration_amount,
+credit_note}` instead of a bare `Subscription` — a **response shape change**
+from the first pass. `proration_amount = (new_amount - old_amount) *
+(days_remaining_in_cycle / cycle_length_days)` (cycle lengths: Monthly=30,
+Quarterly=90, Yearly=365 days; `days_remaining` comes from `next_bill_date`,
+or the full cycle if that's null). A negative result (downgrade) auto-creates
+a `credit_notes` row, returned inline as `credit_note`. A positive result
+(upgrade) is reported but **not** auto-invoiced — raise that charge manually
+via `POST /invoices` if needed.
+
+`POST /subscriptions/{id}/cancel`'s `refund_amount` is now optional: when
+omitted and the subscription has both `amount` and `next_bill_date` set, the
+refund is auto-computed with the same formula above; passing `refund_amount`
+explicitly still overrides it.
 
 ## 8. `invoices`
 
@@ -359,7 +399,7 @@ subscriptions 1---* credit_notes  (optional)
 discount_tiers (standalone config; joined to quotations by matching
                 quotations.customer_tier == discount_tiers.name)
 warehouses (standalone; referenced by product_id inside its own stock[])
-subscriptions (standalone; no FK to quotations yet)
+quotations 1---* subscriptions  (optional, via subscriptions.quotation_id, added 2026-09-05)
 
 customers 1---* customer_users
 customer_users 1---* negotiation_requests
@@ -381,4 +421,6 @@ users 1---* audit_logs (as user_id, nullable)
 - `id` fields are all integers. The wireframes show human-readable codes like `Q-1042` — the API does not use those; the frontend should generate/display its own display code (e.g. `Q-` + zero-padded id) if that formatting is wanted.
 - **Auth exists now** (added 2026-09-05) — see the credentials block near the top of this file. `password_hash` values are real bcrypt hashes for every seeded row.
 - `product_id` on `quotation_lines` and inside `warehouses.stock[]` is a free-text string, matched by convention to `products.product_code` — not a DB-enforced FK.
+- **Every internal endpoint requires auth now** (enforced 2026-09-05) — send `Authorization: Bearer <token>` from `POST /auth/login` on every call except `/auth/*` and `/portal/*`. No token or the wrong token type returns `401`/`403`, not a silent empty result.
+- **`GET /dashboard/summary`** (added 2026-09-05, no dedicated table — computed live from `approvals`, `quotations`, and the deal-health logic) backs wireframe screen 2: `{pending_approvals, open_quotations, at_risk_deals, recent_activity[]}`. `recent_activity` merges `audit_logs`, `approvals.history`, and `negotiation_requests` into one newest-first feed — there's no single "activity" table.
 - `quotations.status` gained a `"negotiation"` value (added 2026-09-05) — set when a customer submits a negotiation request via `POST /portal/quotations/{id}/negotiate`, cleared back to `pending_approval`/`confirmed` on `POST /portal/quotations/{id}/confirm`.

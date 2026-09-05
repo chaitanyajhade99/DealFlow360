@@ -1,7 +1,8 @@
-"""Auth dependencies. Applied to /portal/* (customer-facing, must be
-restricted per PDF section 7's Technical Guidelines). NOT retrofitted onto
-the existing internal endpoints yet — that would be a breaking change for
-already-integrated frontend calls; flagged in API_CONTRACT.md as a follow-up.
+"""Auth dependencies. get_current_customer_user restricts /portal/* (PDF
+section 7's Technical Guidelines). get_current_internal_user is applied,
+router-wide via `dependencies=` in api/main.py, to every internal-workspace
+router except /auth and /portal itself -- PDF A1: "after login, internal
+users can access backend configuration and open a sales workspace".
 """
 import jwt
 from fastapi import Header, HTTPException

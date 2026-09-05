@@ -128,14 +128,23 @@ def score_and_route(db: Session, quotation: Quotation) -> Approval:
     if not flagged_lines and blended_risk == "LOW":
         quotation.status = "confirmed"
         approval = Approval(
-            quotation_id=quotation.id, blended_risk=blended_risk, stage="confirmed", history=reason_entry
+            quotation_id=quotation.id, blended_risk=blended_risk, stage="confirmed",
+            history=reason_entry, flagged_lines=flagged_lines,
         )
         create_invoice_if_needed(db, quotation)
     else:
         quotation.status = "pending_approval"
-        stage = "finance" if blended_risk == "HIGH" else "sales_manager"
+        # Always start at sales_manager, whether MEDIUM or HIGH -- PDF A3's
+        # approval_chain distinguishes "Sales Manager only" (MEDIUM) from
+        # "Sales Manager followed by Finance" (HIGH), which only works as a
+        # real two-step chain if HIGH starts here too. approvals.py's
+        # decide_approval() escalates sales_manager -> finance on approve
+        # when blended_risk is HIGH, and only reaches "confirmed" once
+        # finance itself approves. (Fixed 2026-09-05 -- HIGH used to be
+        # routed straight to "finance", skipping the manager step entirely.)
         approval = Approval(
-            quotation_id=quotation.id, blended_risk=blended_risk, stage=stage, history=reason_entry
+            quotation_id=quotation.id, blended_risk=blended_risk, stage="sales_manager",
+            history=reason_entry, flagged_lines=flagged_lines,
         )
 
     db.add(approval)

@@ -1,15 +1,23 @@
 ## Entities
 - Quotation: id, customer_name, customer_tier, status, created_at, sales_rep_id (nullable FK -> users.id, added 2026-09-05), expected_delivery_date (nullable, added 2026-09-05), actual_delivery_date (nullable, added 2026-09-05)
 - QuotationLine: id, quotation_id, product_id, category, qty, unit_price, discount_pct, category_limit_pct
-- Approval: id, quotation_id, blended_risk (LOW/MEDIUM/HIGH), stage, assigned_to, history[]
+- Approval: id, quotation_id, blended_risk (LOW/MEDIUM/HIGH), stage, assigned_to, history[], flagged_lines[] (added 2026-09-05)
   <!-- history[] entries now include a {"action": "flagged", "reason": ...} entry from
-       score_risk()'s "reason" field, appended on every POST /quotations/{id}/submit. -->
-- Warehouse: id, name, stock[{product_id, qty}], shipping_cost_per_unit, shipment_fixed_cost (added 2026-09-05)
+       score_risk()'s "reason" field, appended on every POST /quotations/{id}/submit.
+       flagged_lines[] persists score_risk()'s per-line breakdown (line, discount_given_pct,
+       limit_allowed_pct, over_by_pct, ...) so wireframe screen 6's "Why This Quote Was
+       Flagged" table can be re-read later instead of being computed-and-discarded at
+       submit time. -->
+- Warehouse: id, name, stock[{product_id, qty}], shipping_cost_per_unit, shipment_fixed_cost (added 2026-09-05), replenishment_rules (json, added 2026-09-05, e.g. {"reorder_point": 10, "reorder_qty": 40} -- PDF A4)
 - FulfillmentSplit: id, quotation_id, splits[{warehouse_id, qty, cost}]
   <!-- Rows where engines.split_warehouse() marks is_backorder=true are filtered out before
        persisting to splits[] -- they're returned transiently as `backorders` in the API
        response only (GET /fulfillment/{id}), never written to this table. -->
-- Subscription: id, customer_name, plan, cycle, next_bill_date, status
+- Subscription: id, customer_name, plan, cycle, next_bill_date, status, amount (nullable, added 2026-09-05), qty (nullable, added 2026-09-05), quotation_id (nullable FK -> quotations.id, added 2026-09-05)
+  <!-- amount/qty added so PDF B7's mid-cycle proration and cancellation refunds can be
+       computed for real (amount * days_remaining_in_cycle / cycle_length_days) instead of
+       requiring the caller to supply a manually-guessed refund_amount every time. Both stay
+       nullable -- a subscription created without them just gets no auto-computed proration. -->
 - Invoice: id, quotation_id, amount, status, due_date
 - DiscountTier: id, name (Bronze/Silver/Gold), max_discount_pct, category_limits{category: pct}, approval_chain{LOW/MEDIUM/HIGH: stage}
   <!-- Added 2026-09-05: backs PDF section A3 / wireframe screen 18 ("Discount tiers
@@ -34,7 +42,23 @@
 
 <!-- Full gap-closure pass, 2026-09-05: went from 12 to 41 endpoints. Every
      PDF section now has a backing endpoint except PDF/XLS export (A7),
-     deliberately deferred -- see the reports section below. -->
+     deliberately deferred -- see the reports section below.
+
+     Frontend-integration hardening pass, 2026-09-05 (second pass same day):
+       - CORS is now enabled (CORSMiddleware, all origins by default -- set
+         CORS_ORIGINS env var to a comma-separated allowlist for deployment).
+       - EVERY endpoint below except POST /auth/signup, POST /auth/login, and
+         everything under /portal/* now REQUIRES `Authorization: Bearer <token>`
+         from POST /auth/login (an internal-type JWT). A request without one
+         gets 401; a customer-type (/portal) token gets 403. This was
+         previously scoped out to avoid breaking in-progress frontend calls --
+         since no frontend existed yet, it's closed now rather than left as a
+         known gap going into integration.
+       - Added GET /approvals, GET /approvals/{id} (wireframe screens 5/6 had
+         no way to list or fetch an approval before this).
+       - Added GET /dashboard/summary (wireframe screen 2).
+       - Added POST /deal-health/{quotation_id}/nudge and /escalate (PDF B9).
+       - PATCH /subscriptions/{id} response shape changed -- see below. -->
 
 ### Quotations
 POST /quotations                      -> sales_rep_id and expected_delivery_date optional
@@ -50,8 +74,13 @@ POST /quotations/{id}/submit          -> calls engines.score_risk() with context
 GET /quotations/{id}/upsell-suggestions -> calls engines.recommend_upsell() (PDF B5)
 
 ### Approvals
+GET /approvals                        -> added 2026-09-05; ?pending_only=true filters to
+                                          stage in (sales_manager, finance) -- screen 5
+GET /approvals/{id}                   -> added 2026-09-05; includes flagged_lines[]
+                                          (screen 6's "Why This Quote Was Flagged" table)
 POST /approvals/{id}/decision         -> approve/reject/return; auto-creates an Invoice
-                                          when the chain fully clears
+                                          when the chain fully clears; now also writes an
+                                          AuditLog "approval" entry (added 2026-09-05)
 
 ### Fulfillment
 GET /fulfillment/{quotation_id}       -> calls engines.split_warehouse()
@@ -78,12 +107,20 @@ POST /portal/quotations/{id}/confirm  -> applies the latest pending counter_disc
 POST /subscriptions
 GET /subscriptions                    -> added 2026-09-05
 GET /subscriptions/{id}               -> added 2026-09-05
-PATCH /subscriptions/{id}             -> added 2026-09-05; plan/cycle/status only --
-                                          Subscription has no amount/qty field to prorate
-                                          a mid-cycle charge against
-POST /subscriptions/{id}/cancel       -> added 2026-09-05; optional refund_amount creates
-                                          a CreditNote (amount is caller-supplied, not
-                                          auto-prorated, for the same reason as above)
+PATCH /subscriptions/{id}             -> added 2026-09-05; now accepts amount/qty too.
+                                          Response shape changed same day:
+                                          {subscription, proration_amount, credit_note}.
+                                          proration_amount = (new_amount - old_amount) *
+                                          (days_remaining_in_cycle / cycle_length_days);
+                                          negative values auto-create a CreditNote
+                                          (returned in credit_note), positive values are
+                                          reported but NOT auto-invoiced -- raise that
+                                          manually via POST /invoices
+POST /subscriptions/{id}/cancel       -> added 2026-09-05; refund_amount is now optional --
+                                          when omitted and the subscription has amount +
+                                          next_bill_date set, it's auto-computed the same
+                                          way as the PATCH proration above; still
+                                          overridable by passing refund_amount explicitly
 GET /subscriptions/{id}/credit-notes  -> added 2026-09-05
 POST /subscription-plans              -> added 2026-09-05, PDF A5
 GET /subscription-plans               -> added 2026-09-05
@@ -99,6 +136,17 @@ POST /invoices/{id}/pay               -> added 2026-09-05; records a Payment, se
 GET /deal-health                      -> calls engines.detect_anomalies(); now also returns
                                           delivery_slippage[] (quotations past
                                           expected_delivery_date with no actual_delivery_date)
+POST /deal-health/{quotation_id}/nudge    -> added 2026-09-05, PDF B9's "automated nudge ...
+                                              action ... triggered from an alert"; writes an
+                                              AuditLog entry, shows up in dashboard activity
+POST /deal-health/{quotation_id}/escalate -> added 2026-09-05, same as nudge but for
+                                              "escalation"; body: {user?, note?}
+
+### Dashboard -- added 2026-09-05, PDF wireframe screen 2
+GET /dashboard/summary                -> {pending_approvals, open_quotations, at_risk_deals,
+                                          recent_activity[]}. recent_activity merges
+                                          AuditLog + Approval.history + NegotiationRequest,
+                                          newest first; ?activity_limit=N (default 10, max 50)
 
 ### Discount tiers
 POST /discount-tiers
@@ -106,7 +154,8 @@ GET /discount-tiers
 PATCH /discount-tiers/{id}
 
 ### Warehouses -- added 2026-09-05, PDF A4
-POST /warehouses
+POST /warehouses                      -> accepts replenishment_rules (json, e.g.
+                                          {"reorder_point": 10, "reorder_qty": 40})
 GET /warehouses
 GET /warehouses/{id}
 PATCH /warehouses/{id}
