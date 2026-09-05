@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Repeat, Calendar, ShieldCheck } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import ListScreen from "../components/ListScreen";
 import StatusBadge from "../components/StatusBadge";
 import { getSubscriptions } from "../api/client";
-import { date } from "../utils";
+import { date, money } from "../utils";
 
 export default function SubscriptionsList() {
   const navigate = useNavigate();
@@ -27,28 +27,20 @@ export default function SubscriptionsList() {
       filters={[
         { value: "all", label: "All Subscriptions" },
         { value: "active", label: "Active" },
+        { value: "cancelled", label: "Cancelled" },
       ]}
       activeFilter={filter}
       onFilterChange={setFilter}
-      action={
-        <button
-          className="df-btn-primary"
-          onClick={() => navigate("/app/billing")}
-          aria-label="View billing breakdown"
-        >
-          <Repeat className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>Billing Breakdown</span>
-        </button>
-      }
       banner={{
-        title: "Standalone Subscription Entities:",
-        body: "The Postgres schema models subscriptions independently without a direct quotation_id foreign key constraint.",
+        title: "Hybrid billing:",
+        body: "Recurring subscription lines are tracked separately from one-time invoice lines, with real mid-cycle proration on modify and prorated refunds on cancel.",
       }}
       columns={[
         { key: "id", label: "Subscription Ref" },
         { key: "customer_name", label: "Subscriber Account" },
         { key: "plan", label: "Plan Type" },
         { key: "cycle", label: "Billing Cadence" },
+        { key: "amount", label: "Recurring Amount" },
         { key: "next_bill_date", label: "Next Invoice Date" },
         { key: "status", label: "Lifecycle Status" },
       ]}
@@ -57,7 +49,7 @@ export default function SubscriptionsList() {
         col.key === "id" ? (
           <button
             className="font-bold text-brand-700 hover:text-brand-900 hover:underline flex items-center gap-1 group font-mono text-xs"
-            onClick={() => navigate("/app/billing")}
+            onClick={() => navigate(`/app/billing/${row.id}`)}
             aria-label={`View billing for subscription S-${String(row.id).padStart(4, "0")}`}
           >
             <span>{`S-${String(row.id).padStart(4, "0")}`}</span>
@@ -73,6 +65,8 @@ export default function SubscriptionsList() {
           <StatusBadge value={row.status} />
         ) : col.key === "plan" ? (
           <span className="font-semibold text-slate-800">{row.plan}</span>
+        ) : col.key === "amount" ? (
+          <span className="font-mono text-xs font-bold text-slate-900">{row.amount != null ? money(row.amount) : "—"}</span>
         ) : (
           <span className="font-medium text-slate-800">{row[col.key]}</span>
         )

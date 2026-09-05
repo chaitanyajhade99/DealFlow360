@@ -35,6 +35,17 @@ browser-based frontend on a different port/host can call this API directly.
 Set the `CORS_ORIGINS` env var (comma-separated) to restrict it for a real
 deployment.
 
+**Frontend (added 2026-09-05)**: `frontend/` is now fully wired to this API
+via `frontend/src/api/client.js` — real login, real reads, real writes, no
+mock data. `GET /portal/me`, `GET /portal/quotations` (list), and
+`GET /portal/negotiations` were added specifically to back the portal's
+Profile/My-Quotations/Messages screens. `GET /subscriptions` gained
+`?quotation_id=`/`?status=` filters for the billing detail screen. The
+portal endpoints also gained an ownership check in this pass: a customer
+token can now only read or act on quotations whose `customer_name` matches
+its own `Customer.name` — previously any valid customer login could read or
+negotiate on any quotation by guessing its id.
+
 **Seeded test credentials** (same password for every seeded user):
 ```
 Internal:  j.rao@dealflow360.example / password123   (sales_rep)
@@ -231,6 +242,7 @@ Finance/Operations User, Admin — Customer is a separate portal role, see
 | role | text | `"sales_rep"` \| `"sales_manager"` \| `"finance"` \| `"admin"` |
 | created_at | timestamptz | |
 | seniority | smallint, nullable | **added 2026-09-05.** `0` junior, `1` mid, `2` principal. Only meaningful for `role = "sales_rep"` — a stronger risk-model signal than `role` alone, since a rep's seniority varies independent of role. Feeds `score_risk()`. |
+| status | text, `NOT NULL DEFAULT 'approved'` | **added 2026-09-05** (feature-completion pass), applied via an additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` run at app startup so it's safe against both local Postgres and the already-populated Supabase DB. `"pending"` \| `"approved"` \| `"rejected"`. `POST /auth/signup` always creates `"pending"` rows; `POST /auth/login` rejects non-`"approved"` accounts with 403. An Admin flips this via `POST /admin/users/{id}/approve`\|`reject`. The column default keeps every pre-existing (seeded) user `"approved"` without needing a backfill. |
 
 ## 10. `customers`
 

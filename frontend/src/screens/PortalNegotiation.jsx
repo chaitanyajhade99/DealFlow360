@@ -1,42 +1,61 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Info } from "lucide-react";
 import {
-  Send,
-  CheckCircle2,
-  MessageSquare,
-  Sparkles,
-  Check,
-  Building,
-  Info,
-} from "lucide-react";
-import {
-  getNegotiationRequests,
-  getQuotationDetail,
+  getPortalQuotations,
+  getPortalQuotationDetail,
   submitNegotiationRequest,
+  confirmPortalQuotation,
 } from "../api/client";
 import DetailScreen from "../components/DetailScreen";
 import Panel from "../components/Panel";
+import StatusBadge from "../components/StatusBadge";
 import Skeleton from "../components/Skeleton";
-import { code, money } from "../utils";
+import { useToast } from "../context/ToastContext";
+import { code, lineTotal, money } from "../utils";
 
 export default function PortalNegotiation() {
+  const { quotationId } = useParams();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const [allQuotations, setAllQuotations] = useState([]);
   const [data, setData] = useState({ quotation: null, lines: [] });
-  const [requests, setRequests] = useState([]);
   const [comments, setComments] = useState({});
   const [counters, setCounters] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState(null);
-  const [confirmed, setConfirmed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getQuotationDetail(1042), getNegotiationRequests(1042)]).then(
-      ([d, r]) => {
-        setData(d);
-        setRequests(r);
-        setLoading(false);
-      }
-    );
+    getPortalQuotations().then(setAllQuotations).catch(() => setAllQuotations([]));
   }, []);
+
+  const activeId =
+    quotationId ||
+    allQuotations.find((q) => ["draft", "pending_approval", "negotiation", "approved"].includes(q.status))?.id ||
+    allQuotations[0]?.id;
+
+  useEffect(() => {
+    if (!activeId) {
+      if (allQuotations.length === 0 && !loading) return;
+      return;
+    }
+    setLoading(true);
+    getPortalQuotationDetail(activeId).then((d) => {
+      setData(d);
+      setLoading(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, allQuotations.length]);
+
+  if (allQuotations.length === 0 && !loading) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
+        No quotations found for your account yet.
+      </div>
+    );
+  }
 
   if (loading || !data.quotation) {
     return (
@@ -48,173 +67,155 @@ export default function PortalNegotiation() {
     );
   }
 
+  const { quotation, lines } = data;
+  const total = lines.reduce((s, l) => s + lineTotal(l), 0);
+  const isNegotiable = ["draft", "pending_approval", "negotiation", "approved"].includes(quotation.status);
+
   const handleSubmit = async () => {
     setSubmitting(true);
-    const newReqs = [];
-    for (const line of data.lines) {
-      if (comments[line.id] || counters[line.id]) {
-        const payload = {
-          quotation_id: data.quotation.id,
-          quotation_line_id: line.id,
-          customer_user_id: 41,
-          message: comments[line.id] || `Requested ${counters[line.id]}% discount on ${line.product_id}`,
-          counter_discount_pct: counters[line.id] ? Number(counters[line.id]) : null,
-        };
-        const res = await submitNegotiationRequest(payload);
-        newReqs.push(res);
+    try {
+      const requests = [];
+      for (const line of lines) {
+        if (comments[line.id] || counters[line.id]) {
+          requests.push(
+            submitNegotiationRequest(quotation.id, {
+              quotation_line_id: line.id,
+              message: comments[line.id] || `Requested ${counters[line.id]}% discount on ${line.product_id}`,
+              counter_discount_pct: counters[line.id] ? Number(counters[line.id]) : null,
+            })
+          );
+        }
       }
+      if (!requests.length) {
+        toast("Add a comment or counter-discount to at least one line first.", "warning");
+        setSubmitting(false);
+        return;
+      }
+      await Promise.all(requests);
+      toast("Change request submitted to the account sales team.", "success");
+      setComments({});
+      setCounters({});
+      const refreshed = await getPortalQuotationDetail(quotation.id);
+      setData(refreshed);
+    } catch (err) {
+      toast(err.message || "Could not submit request.", "error");
+    } finally {
+      setSubmitting(false);
     }
-    setRequests((prev) => [...newReqs, ...prev]);
-    setSubmitting(false);
-    setComments({});
-    setCounters({});
-    setFeedback("Negotiation change requests submitted directly to the account sales team.");
-    setTimeout(() => setFeedback(null), 4000);
   };
 
-  const handleConfirm = () => {
-    setConfirmed(true);
-    setFeedback("Quotation accepted & confirmed! Order routed for fulfillment processing.");
+  const handleConfirm = async () => {
+    setConfirming(true);
+    try {
+      const approval = await confirmPortalQuotation(quotation.id);
+      if (approval.stage === "confirmed") {
+        toast("Quotation confirmed! Order routed for fulfillment processing.", "success");
+      } else {
+        toast(
+          `Final terms exceeded thresholds — automatically routed back to approval (${approval.blended_risk} risk).`,
+          "warning"
+        );
+      }
+      const refreshed = await getPortalQuotationDetail(quotation.id);
+      setData(refreshed);
+    } catch (err) {
+      toast(err.message || "Could not confirm quotation.", "error");
+    } finally {
+      setConfirming(false);
+    }
   };
 
   return (
     <DetailScreen
-      title={`Commercial Quotation Review · ${code("Q", data.quotation.id)}`}
-      subtitle={`Prepared for ${data.quotation.customer_name} · ${data.quotation.customer_tier} Tier Account`}
-      actions={[
-        {
-          label: submitting ? "Submitting..." : "Submit Change Requests",
-          onClick: handleSubmit,
-        },
-        {
-          label: confirmed ? "Quotation Confirmed ✓" : "Confirm & Accept Quote",
-          primary: true,
-          variant: confirmed ? "success" : undefined,
-          onClick: handleConfirm,
-        },
-      ]}
+      title={`Quotation ${code("Q", quotation.id)}`}
+      subtitle={`${quotation.customer_name} · Status: ${quotation.status.replaceAll("_", " ")}`}
+      actions={
+        isNegotiable
+          ? [
+              { label: submitting ? "Sending..." : "Submit Request", onClick: handleSubmit },
+              { label: confirming ? "Confirming..." : "Confirm Quotation", primary: true, onClick: handleConfirm },
+            ]
+          : []
+      }
       banner={{
-        title: "Customer Secure Commercial View:",
-        body: "You can submit counter-discounts or special requirements per line item. Internal pricing calculations and margin rules are protected.",
+        title: `Status: ${quotation.status.replaceAll("_", " ")}`,
+        body: "If your final terms exceed approval thresholds, this quotation automatically re-enters the internal approval flow — no email back-and-forth needed.",
       }}
     >
-      {feedback && (
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs text-emerald-900 shadow-xs animate-fade-slide-in">
-          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-          <span className="font-semibold">{feedback}</span>
+      {allQuotations.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          {allQuotations.map((q) => (
+            <button
+              key={q.id}
+              onClick={() => navigate(`/portal/${q.id}`)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                q.id === quotation.id ? "border-indigo-400 bg-indigo-50 text-indigo-800" : "border-slate-200 bg-white text-slate-600"
+              }`}
+            >
+              {code("Q", q.id)} · <StatusBadge value={q.status} className="ml-1" />
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Quotation Lines Card Grid */}
-      <Panel
-        title="Quotation Commercial Terms & Counter Proposals"
-        right={<span className="text-xs text-slate-500">{data.lines.length} Line Items</span>}
-      >
-        <div className="space-y-4">
-          {data.lines.map((line, idx) => (
-            <div
-              key={line.id}
-              className={`rounded-xl border border-slate-200/90 bg-white p-4 shadow-xs transition-all duration-200 hover:border-indigo-300 hover:shadow-card animate-stagger-${
-                idx + 1
-              }`}
-            >
-              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 pb-3 border-b border-slate-100">
-                <div>
-                  <div className="text-xs font-bold text-slate-900 font-mono">{line.product_id}</div>
-                  <div className="text-[11px] text-slate-400">{line.category}</div>
-                </div>
-                <div>
-                  <div className="df-label">Quantity</div>
-                  <div className="text-xs font-bold text-slate-800">{line.qty} units</div>
-                </div>
-                <div>
-                  <div className="df-label">Unit Price</div>
-                  <div className="font-mono text-xs font-bold text-slate-800">{money(line.unit_price)}</div>
-                </div>
-                <div>
-                  <div className="df-label">Offered Discount</div>
-                  <div className="font-mono text-xs font-bold text-indigo-700">{line.discount_pct}% Off</div>
-                </div>
-              </div>
+      <Panel title="Quotation Lines" right={<span className="font-mono text-sm font-black text-slate-900">{money(total)}</span>}>
+        <div className="overflow-x-auto">
+          <table className="df-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Qty</th>
+                <th>Unit Price</th>
+                <th>Discount</th>
+                <th>Line Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l) => (
+                <tr key={l.id}>
+                  <td className="font-mono text-xs font-bold text-slate-900">{l.product_name || l.product_id}</td>
+                  <td className="text-xs font-semibold text-slate-700">{l.qty}</td>
+                  <td className="font-mono text-xs text-slate-700">{money(l.unit_price)}</td>
+                  <td className="font-mono text-xs font-semibold text-brand-700">{l.discount_pct}%</td>
+                  <td className="font-mono text-xs font-bold text-slate-900">{money(lineTotal(l))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
 
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <div className="sm:col-span-2">
-                  <label className="df-label">Comment / Special Terms Request</label>
-                  <textarea
-                    aria-label={`Comment for ${line.product_id}`}
-                    className="df-input min-h-[64px] text-xs"
-                    placeholder="E.g. Requesting expedited shipping or volume adjustment..."
-                    value={comments[line.id] || ""}
-                    onChange={(e) =>
-                      setComments((x) => ({ ...x, [line.id]: e.target.value }))
-                    }
+      {isNegotiable && (
+        <Panel title="Request Changes or Counter a Discount">
+          <div className="space-y-3">
+            {lines.map((l) => (
+              <div key={l.id} className="rounded-lg border border-slate-200 p-3">
+                <div className="text-xs font-bold text-slate-800 mb-2">{l.product_name || l.product_id} (currently {l.discount_pct}% off)</div>
+                <div className="grid gap-2 sm:grid-cols-[1fr_140px]">
+                  <input
+                    className="df-input text-xs"
+                    placeholder="Comment or question…"
+                    value={comments[l.id] || ""}
+                    onChange={(e) => setComments((prev) => ({ ...prev, [l.id]: e.target.value }))}
+                  />
+                  <input
+                    type="number"
+                    className="df-input text-xs"
+                    placeholder="Counter %"
+                    value={counters[l.id] || ""}
+                    onChange={(e) => setCounters((prev) => ({ ...prev, [l.id]: e.target.value }))}
                   />
                 </div>
-                <div>
-                  <label className="df-label">Counter Discount %</label>
-                  <div className="relative">
-                    <input
-                      aria-label={`Counter discount for ${line.product_id}`}
-                      className="df-input font-mono text-xs font-bold text-indigo-900"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.5"
-                      placeholder="e.g. 21"
-                      value={counters[line.id] || ""}
-                      onChange={(e) =>
-                        setCounters((x) => ({ ...x, [line.id]: e.target.value }))
-                      }
-                    />
-                    <span className="absolute right-2.5 top-2 text-xs text-slate-400 font-mono pointer-events-none">
-                      %
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-1">Proposed target discount</div>
-                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </Panel>
+            ))}
+          </div>
+        </Panel>
+      )}
 
-      {/* Negotiation History / Messages */}
-      <Panel
-        title="Commercial Negotiation History"
-        right={<span className="text-xs text-slate-500">{requests.length} Requests</span>}
-      >
-        <div className="space-y-2.5">
-          {requests.map((r) => (
-            <div
-              key={r.id}
-              className="flex items-start justify-between rounded-lg border border-slate-100 bg-slate-50/70 p-3 text-xs"
-            >
-              <div className="flex items-start gap-2.5">
-                <MessageSquare className="h-4 w-4 text-indigo-600 mt-0.5 shrink-0" />
-                <div>
-                  <div className="font-semibold text-slate-800">
-                    {r.message || "Quotation-level commercial request"}
-                  </div>
-                  {r.counter_discount_pct != null && (
-                    <div className="mt-0.5 font-mono text-[11px] font-bold text-indigo-700">
-                      Proposed Counter Discount: {r.counter_discount_pct}%
-                    </div>
-                  )}
-                </div>
-              </div>
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200 uppercase">
-                {r.status}
-              </span>
-            </div>
-          ))}
-          {requests.length === 0 && (
-            <div className="text-center py-6 text-xs text-slate-400">
-              No previous negotiation requests for this quotation.
-            </div>
-          )}
-        </div>
-      </Panel>
+      <div className="flex items-start gap-2.5 rounded-lg border border-sky-200 bg-sky-50/60 p-3 text-xs text-sky-900">
+        <Info className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+        <div>Every action on this page calls the real backend — <code className="font-mono">POST /portal/quotations/{quotation.id}/negotiate</code> and <code className="font-mono">/confirm</code>.</div>
+      </div>
     </DetailScreen>
   );
 }
-

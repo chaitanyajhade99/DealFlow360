@@ -9,7 +9,7 @@ import {
   Layers,
   AlertCircle,
 } from "lucide-react";
-import { getFulfillmentDetail, saveFulfillmentSplit } from "../api/client";
+import { getFulfillmentDetail } from "../api/client";
 import DetailScreen from "../components/DetailScreen";
 import Panel from "../components/Panel";
 import Skeleton from "../components/Skeleton";
@@ -52,8 +52,12 @@ export default function FulfillmentDetail() {
   const coveragePct = totalQty > 0 ? Math.min(100, Math.round((totalAllocated / totalQty) * 100)) : 100;
   const isComplete = totalAllocated >= totalQty;
 
-  const handleSave = async () => {
-    await saveFulfillmentSplit(data.quotation.id, splits);
+  const handleSave = () => {
+    // The backend computes fulfillment splits live from real stock/cost data
+    // (GET /fulfillment/{id}) but does not expose a write endpoint to persist
+    // a manual override -- there is no PDF-specified contract for it. This
+    // stays a local preview so a rep can explore "what if" allocations
+    // without silently pretending the change was saved server-side.
     setSavedFeedback(true);
     setTimeout(() => setSavedFeedback(false), 3000);
   };
@@ -109,7 +113,7 @@ export default function FulfillmentDetail() {
         <div className="flex items-center justify-between rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs text-emerald-900 animate-fade-slide-in">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            <span>Manual inventory split override saved locally.</span>
+            <span>Override previewed locally (not persisted — see note below).</span>
           </div>
         </div>
       )}
@@ -248,7 +252,10 @@ export default function FulfillmentDetail() {
       <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-800">
         <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
         <div>
-          <b>Contract note:</b> Manual Override is frontend-managed in this release because the supplied API contract does not specify a fulfillment write endpoint.
+          <b>Contract note:</b> The split and cost figures above are computed live by the backend's
+          warehouse-allocation engine (real stock, real shipping cost). Manual Override stays a local
+          preview because the PDF's contract never specifies a write endpoint for persisting a
+          fulfillment override — the "Accept Suggested Split" data is the real, backend-computed answer.
         </div>
       </div>
     </DetailScreen>

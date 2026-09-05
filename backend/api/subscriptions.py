@@ -1,6 +1,7 @@
 from datetime import date
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from models import CreditNote, Subscription, SubscriptionPlan, get_db
@@ -43,8 +44,17 @@ def create_subscription(payload: SubscriptionCreate, db: Session = Depends(get_d
 
 
 @router.get("/subscriptions", response_model=list[SubscriptionOut])
-def list_subscriptions(db: Session = Depends(get_db)):
-    return db.query(Subscription).all()
+def list_subscriptions(
+    quotation_id: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    query = db.query(Subscription)
+    if quotation_id is not None:
+        query = query.filter(Subscription.quotation_id == quotation_id)
+    if status is not None:
+        query = query.filter(Subscription.status == status)
+    return query.all()
 
 
 @router.get("/subscriptions/{id}", response_model=SubscriptionOut)

@@ -32,8 +32,8 @@ export default function InvoicesList() {
       activeFilter={filter}
       onFilterChange={setFilter}
       banner={{
-        title: "Read-only invoice contract schema:",
-        body: "GET /invoices is operational in the backend contract. Manual payment records currently operate in local state.",
+        title: "Invoices are auto-generated:",
+        body: "An invoice is created automatically the moment a quotation is confirmed or fully approved. Recording a payment here updates the real balance and flips status to paid once covered.",
       }}
       columns={[
         { key: "id", label: "Invoice Number" },

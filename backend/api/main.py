@@ -6,9 +6,11 @@ import os
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from models import Base, engine
 from api import (
+    admin,
     approvals,
     auth,
     dashboard,
@@ -47,6 +49,12 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 
+# Additive-only migration for columns added after the tables already existed
+# in deployed databases (local + the shared Supabase team DB) -- create_all
+# only creates missing tables, it never ALTERs existing ones.
+with engine.begin() as conn:
+    conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR NOT NULL DEFAULT 'approved'"))
+
 # /auth and /portal issue tokens, so they stay open. Every other router is
 # internal-workspace-only (PDF A1: "after login, internal users can access
 # backend configuration and open a sales workspace") and now requires a
@@ -67,6 +75,7 @@ app.include_router(warehouses.router, dependencies=_internal)
 app.include_router(products.router, dependencies=_internal)
 app.include_router(reports.router, dependencies=_internal)
 app.include_router(dashboard.router, dependencies=_internal)
+app.include_router(admin.router, dependencies=_internal)
 
 
 @app.get("/health")

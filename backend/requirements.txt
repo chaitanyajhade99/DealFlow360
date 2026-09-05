@@ -7,3 +7,5 @@ python-dotenv>=1.0
 bcrypt>=4.1
 PyJWT>=2.8
 requests>=2.31  # demo/run_demo.py only
+reportlab>=4.1  # GET /quotations/{id}/pdf
+razorpay>=1.4  # /invoices/{id}/razorpay-* payment flow

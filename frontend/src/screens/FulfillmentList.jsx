@@ -13,7 +13,7 @@ export default function FulfillmentList() {
 
   useEffect(() => {
     getQuotations().then((q) =>
-      setRows(q.filter((x) => ["fulfillment", "confirmed"].includes(x.status)))
+      setRows(q.filter((x) => ["approved", "confirmed"].includes(x.status)))
     );
   }, []);
 
@@ -28,21 +28,11 @@ export default function FulfillmentList() {
       subtitle="Warehouse routing, inventory readiness, and multi-depot split execution."
       filters={[
         { value: "all", label: "All Active" },
-        { value: "fulfillment", label: "In Fulfillment" },
+        { value: "approved", label: "Approved" },
         { value: "confirmed", label: "Confirmed Orders" },
       ]}
       activeFilter={filter}
       onFilterChange={setFilter}
-      action={
-        <button
-          className="df-btn-primary"
-          onClick={() => navigate("/app/fulfillment/1037")}
-          aria-label="Open primary fulfillment order"
-        >
-          <Truck className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>Open Fulfillment</span>
-        </button>
-      }
       banner={{
         title: "Algorithmic warehouse allocation active:",
         body: "Suggested multi-depot inventory splits minimize shipping cost. Use 'Manual Override' to adjust quantities.",

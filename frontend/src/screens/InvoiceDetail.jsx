@@ -1,34 +1,41 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import {
-  Receipt,
-  Download,
-  CheckCircle2,
-  DollarSign,
-  Calendar,
-  CreditCard,
-  Building,
-} from "lucide-react";
-import { getInvoiceDetail } from "../api/client";
+import { getInvoiceDetail, payInvoice, createRazorpayOrder, verifyRazorpayPayment } from "../api/client";
 import DetailScreen from "../components/DetailScreen";
 import Panel from "../components/Panel";
 import StatusStepper from "../components/StatusStepper";
 import StatusBadge from "../components/StatusBadge";
 import Skeleton from "../components/Skeleton";
+import { useToast } from "../context/ToastContext";
 import { code, date, lineTotal, money, pct } from "../utils";
+
+const RAZORPAY_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
+
+function loadRazorpayScript() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(true);
+    const script = document.createElement("script");
+    script.src = RAZORPAY_SCRIPT_URL;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 export default function InvoiceDetail() {
   const { id } = useParams();
+  const { toast } = useToast();
   const [data, setData] = useState({ invoice: null, quotation: null, lines: [] });
-  const [paidOverride, setPaidOverride] = useState(false);
-  const [feedback, setFeedback] = useState(null);
+  const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [manualConfirmOpen, setManualConfirmOpen] = useState(false);
+  const [manualReference, setManualReference] = useState("");
+
+  const load = () => getInvoiceDetail(id).then(setData);
 
   useEffect(() => {
-    getInvoiceDetail(id).then((d) => {
-      setData(d);
-      setLoading(false);
-    });
+    load().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   if (loading || !data.invoice) {
@@ -41,18 +48,68 @@ export default function InvoiceDetail() {
     );
   }
 
-  const isPaid = paidOverride || data.invoice.status === "paid";
+  const isPaid = data.invoice.status === "paid";
   const currentStep = isPaid ? 3 : 2;
 
-  const handleRecordPayment = () => {
-    setPaidOverride(true);
-    setFeedback("Payment transaction of " + money(data.invoice.amount) + " recorded successfully.");
-    setTimeout(() => setFeedback(null), 4000);
+  const handleRecordManualPayment = async () => {
+    if (!manualReference.trim()) {
+      toast("Enter the bank reference / reason before confirming.", "warning");
+      return;
+    }
+    setBusy(true);
+    try {
+      await payInvoice(data.invoice.id, {
+        amount: data.invoice.amount,
+        method: `bank_transfer: ${manualReference.trim()}`,
+      });
+      toast(`Manual payment of ${money(data.invoice.amount)} recorded — invoice marked paid.`, "success");
+      setManualConfirmOpen(false);
+      setManualReference("");
+      load();
+    } catch (err) {
+      toast(err.message || "Could not record payment.", "error");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleDownload = () => {
-    setFeedback("Generated commercial invoice PDF bundle for download.");
-    setTimeout(() => setFeedback(null), 3000);
+  const handlePayWithRazorpay = async () => {
+    setBusy(true);
+    try {
+      const loaded = await loadRazorpayScript();
+      if (!loaded) throw new Error("Could not load Razorpay checkout script.");
+      const order = await createRazorpayOrder(data.invoice.id);
+      const rzp = new window.Razorpay({
+        key: order.key_id,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.order_id,
+        name: "DealFlow360",
+        description: `Invoice ${code("INV", data.invoice.id)}`,
+        theme: { color: "#0c5a96" },
+        handler: async (response) => {
+          try {
+            await verifyRazorpayPayment(data.invoice.id, {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            toast("Razorpay payment verified — invoice marked paid.", "success");
+            load();
+          } catch (err) {
+            toast(err.message || "Payment verification failed.", "error");
+          } finally {
+            setBusy(false);
+          }
+        },
+        modal: { ondismiss: () => setBusy(false) },
+      });
+      rzp.on("payment.failed", () => toast("Payment failed or was cancelled.", "error"));
+      rzp.open();
+    } catch (err) {
+      toast(err.message || "Could not start Razorpay checkout.", "error");
+      setBusy(false);
+    }
   };
 
   return (
@@ -62,18 +119,11 @@ export default function InvoiceDetail() {
         "Q",
         data.invoice.quotation_id
       )} · Due ${date(data.invoice.due_date)}`}
-      actions={[
-        {
-          label: isPaid ? "Payment Recorded ✓" : "Record Payment",
-          primary: !isPaid,
-          variant: isPaid ? "success" : undefined,
-          onClick: handleRecordPayment,
-        },
-        {
-          label: "Download Invoice PDF",
-          onClick: handleDownload,
-        },
-      ]}
+      actions={
+        isPaid
+          ? []
+          : [{ label: busy ? "Working..." : "Pay with Razorpay", primary: true, onClick: handlePayWithRazorpay }]
+      }
       banner={{
         title: isPaid ? "Invoice Settlement Complete:" : "Receivable Outstanding:",
         body: `Commercial invoice amount of ${money(data.invoice.amount)} is marked as ${
@@ -81,13 +131,6 @@ export default function InvoiceDetail() {
         }. Due by ${date(data.invoice.due_date)}.`,
       }}
     >
-      {feedback && (
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-900 shadow-xs animate-fade-slide-in">
-          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-          <span className="font-semibold">{feedback}</span>
-        </div>
-      )}
-
       {/* Order-to-Payment Lifecycle Stepper */}
       <Panel title="Order-to-Cash Lifecycle Progress">
         <div className="py-2">
@@ -168,7 +211,52 @@ export default function InvoiceDetail() {
             <div className="text-[11px] text-slate-400">Net 30 terms</div>
           </div>
         </div>
+
+        {!isPaid && (
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setManualConfirmOpen(true)}
+              className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 hover:underline"
+            >
+              Finance: mark as paid manually (bank transfer already received outside DealFlow360)
+            </button>
+          </div>
+        )}
       </Panel>
+
+      {manualConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-slate-200">
+            <h2 className="text-base font-bold text-slate-900">Confirm manual payment</h2>
+            <p className="mt-1.5 text-xs text-slate-500">
+              This marks the invoice paid without going through Razorpay. Only use this when the
+              customer has genuinely already paid outside the platform (e.g. a bank wire) — enter
+              the reference so it's traceable in the audit trail.
+            </p>
+            <label className="df-label mt-4">Bank Reference / Reason *</label>
+            <input
+              className="df-input text-xs"
+              value={manualReference}
+              onChange={(e) => setManualReference(e.target.value)}
+              placeholder="e.g. Wire ref #WT-88213"
+              autoFocus
+            />
+            <div className="mt-5 flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => { setManualConfirmOpen(false); setManualReference(""); }}
+                className="df-btn-secondary"
+              >
+                Cancel
+              </button>
+              <button type="button" onClick={handleRecordManualPayment} disabled={busy} className="df-btn-primary">
+                {busy ? "Recording..." : "Confirm & Mark Paid"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DetailScreen>
   );
 }

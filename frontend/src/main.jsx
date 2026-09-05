@@ -6,7 +6,7 @@ import { ToastProvider } from "./context/ToastContext";
 import { RoleProvider } from "./context/RoleContext";
 import InternalRouteGuard from "./components/InternalRouteGuard";
 import AdminRouteGuard from "./components/AdminRouteGuard";
-import PortalShell from "./components/PortalShell";
+import PortalRouteGuard from "./components/PortalRouteGuard";
 import Login from "./screens/Login";
 import Dashboard from "./screens/Dashboard";
 import QuotationsList from "./screens/QuotationsList";
@@ -27,13 +27,18 @@ import PortalProfile from "./screens/PortalProfile";
 import AdminProducts from "./screens/admin/AdminProducts";
 import AdminDiscountConfig from "./screens/admin/AdminDiscountConfig";
 import AdminReporting from "./screens/admin/AdminReporting";
+import AdminWarehouses from "./screens/admin/AdminWarehouses";
+import AdminSubscriptionPlans from "./screens/admin/AdminSubscriptionPlans";
+import AdminUsers from "./screens/admin/AdminUsers";
+import Signup from "./screens/Signup";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
-        
+        <Route path="/signup" element={<Signup />} />
+
         {/* Protected Internal Routes */}
         <Route path="/app" element={<InternalRouteGuard />}>
           <Route index element={<Dashboard />} />
@@ -44,7 +49,7 @@ function App() {
           <Route path="fulfillment" element={<FulfillmentList />} />
           <Route path="fulfillment/:id" element={<FulfillmentDetail />} />
           <Route path="subscriptions" element={<SubscriptionsList />} />
-          <Route path="billing" element={<BillingDetail />} />
+          <Route path="billing/:id" element={<BillingDetail />} />
           <Route path="invoices" element={<InvoicesList />} />
           <Route path="invoices/:id" element={<InvoiceDetail />} />
           <Route path="deal-health" element={<DealHealth />} />
@@ -75,10 +80,34 @@ function App() {
               </AdminRouteGuard>
             }
           />
+          <Route
+            path="admin/warehouses"
+            element={
+              <AdminRouteGuard>
+                <AdminWarehouses />
+              </AdminRouteGuard>
+            }
+          />
+          <Route
+            path="admin/subscription-plans"
+            element={
+              <AdminRouteGuard>
+                <AdminSubscriptionPlans />
+              </AdminRouteGuard>
+            }
+          />
+          <Route
+            path="admin/users"
+            element={
+              <AdminRouteGuard>
+                <AdminUsers />
+              </AdminRouteGuard>
+            }
+          />
         </Route>
 
         {/* Customer Portal Standalone Routes */}
-        <Route path="/portal" element={<PortalShell />}>
+        <Route path="/portal" element={<PortalRouteGuard />}>
           <Route index element={<PortalNegotiation />} />
           <Route path=":quotationId" element={<PortalNegotiation />} />
           <Route path="messages" element={<PortalMessages />} />
@@ -90,8 +119,7 @@ function App() {
         <Route path="/admin/products" element={<Navigate to="/app/admin/products" replace />} />
         <Route path="/admin/discount-config" element={<Navigate to="/app/admin/discount-config" replace />} />
         <Route path="/admin/reporting" element={<Navigate to="/app/admin/reporting" replace />} />
-        <Route path="/billing" element={<Navigate to="/app/billing" replace />} />
-        <Route path="/portal/quotation" element={<Navigate to="/portal/Q-1042" replace />} />
+        <Route path="/billing" element={<Navigate to="/app/subscriptions" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

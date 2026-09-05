@@ -13,6 +13,8 @@ const map = {
   MEDIUM: { bg: "bg-amber-50 text-amber-800 border border-amber-200/80", dot: "bg-amber-500", label: "Medium risk" },
   LOW: { bg: "bg-emerald-50 text-emerald-800 border border-emerald-200/80", dot: "bg-emerald-500", label: "Low risk" },
   pending: { bg: "bg-amber-50 text-amber-800 border border-amber-200/80", dot: "bg-amber-500", label: "Pending" },
+  rejected: { bg: "bg-rose-50 text-rose-800 border border-rose-200/80", dot: "bg-rose-500", label: "Rejected" },
+  returned: { bg: "bg-orange-50 text-orange-800 border border-orange-200/80", dot: "bg-orange-500", label: "Returned" },
   resolved: { bg: "bg-emerald-50 text-emerald-800 border border-emerald-200/80", dot: "bg-emerald-500", label: "Resolved" },
 };
 

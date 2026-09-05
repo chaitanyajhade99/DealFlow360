@@ -25,7 +25,7 @@
        per-category ceilings, and the risk->approval-stage routing, since the
        wireframe combines all three into a single config screen. -->
 
-- User: id, name, email, password_hash, role (sales_rep/sales_manager/finance/admin), created_at, seniority (nullable smallint: 0 junior/1 mid/2 principal, added 2026-09-05)
+- User: id, name, email, password_hash, role (sales_rep/sales_manager/finance/admin), created_at, seniority (nullable smallint: 0 junior/1 mid/2 principal, added 2026-09-05), status (pending/approved/rejected, added 2026-09-05, server default "approved" so pre-existing rows are unaffected -- new self-service signups start "pending" and cannot log in until an Admin approves them)
 - Customer: id, name, default_tier, created_at
 - CustomerUser: id, customer_id, email, password_hash (nullable), auth_method (password/magic_link), created_at
 - Product: id, product_code, name, category, price, unit, tax_pct, description, is_subscription, recurring_cycle, quantity_on_hand, cost (nullable, added 2026-09-05), is_promoted (added 2026-09-05), promo_tag (nullable, added 2026-09-05)
@@ -58,7 +58,36 @@
          no way to list or fetch an approval before this).
        - Added GET /dashboard/summary (wireframe screen 2).
        - Added POST /deal-health/{quotation_id}/nudge and /escalate (PDF B9).
-       - PATCH /subscriptions/{id} response shape changed -- see below. -->
+       - PATCH /subscriptions/{id} response shape changed -- see below.
+
+     Full frontend integration pass, 2026-09-05 (third pass same day): the
+     React frontend (frontend/src) is now wired end-to-end to every endpoint
+     below -- no mock data, no local-only write stubs. Added GET /portal/me,
+     GET /portal/quotations (list), GET /portal/negotiations, and a
+     quotation_id/status filter on GET /subscriptions to support it. Fixed a
+     real security gap in the process: /portal/quotations/{id} (and
+     negotiate/confirm) now verify the quotation's customer_name matches the
+     caller's own Customer record before returning/mutating anything.
+
+     Feature-completion pass, 2026-09-05 (fourth pass same day): closed the
+     remaining PDF gaps raised in review --
+       - POST /auth/signup now creates status="pending" accounts restricted to
+         sales_rep/sales_manager/finance (admin cannot self-signup); POST
+         /auth/login now rejects pending/rejected accounts with 403. New
+         GET/POST /admin/users* routes (below) let an Admin approve or reject
+         them.
+       - POST /portal/signup lets a customer self-register and link to (or
+         create) their Customer org without needing an internal user to set
+         one up first -- auto-approved, no admin gate (unlike internal signup)
+         since it would otherwise block a rep's very first quote to a new
+         account.
+       - GET /quotations/{id}/pdf generates a real PDF (reportlab) of the
+         quotation's line items and totals, streamed on demand -- not cached.
+       - POST /invoices/{id}/razorpay-order and POST
+         /invoices/{id}/razorpay-verify add a real Razorpay Checkout (test
+         mode) payment path alongside the existing manual POST
+         /invoices/{id}/pay; verify checks the HMAC-SHA256 signature
+         server-side before marking the invoice paid. -->
 
 ### Quotations
 POST /quotations                      -> sales_rep_id and expected_delivery_date optional
@@ -72,6 +101,10 @@ POST /quotations/{id}/submit          -> calls engines.score_risk() with context
                                           result["reason"] appended into Approval.history;
                                           auto-creates an Invoice if no approval was needed
 GET /quotations/{id}/upsell-suggestions -> calls engines.recommend_upsell() (PDF B5)
+GET /quotations/{id}/pdf              -> added 2026-09-05; streams a generated PDF
+                                          (application/pdf) of the quotation's line items,
+                                          discounts, and total -- built with reportlab,
+                                          not persisted/cached
 
 ### Approvals
 GET /approvals                        -> added 2026-09-05; ?pending_only=true filters to
@@ -86,17 +119,40 @@ POST /approvals/{id}/decision         -> approve/reject/return; auto-creates an 
 GET /fulfillment/{quotation_id}       -> calls engines.split_warehouse()
 
 ### Auth (internal users) -- added 2026-09-05
-POST /auth/signup
-POST /auth/login                      -> returns a JWT (type: "internal")
+POST /auth/signup                     -> role must be sales_rep/sales_manager/finance (admin
+                                          rejected with 400); creates status="pending" --
+                                          cannot log in until an Admin approves (see /admin/users)
+POST /auth/login                      -> returns a JWT (type: "internal"); 403 if the account
+                                          is still "pending" or was "rejected"
+
+### Admin -- added 2026-09-05
+<!-- All routes require an internal JWT AND role == "admin" (403 otherwise). -->
+GET /admin/users                      -> ?status=pending|approved|rejected filter
+POST /admin/users/{id}/approve        -> sets status="approved"
+POST /admin/users/{id}/reject         -> sets status="rejected"
 
 ### Customer portal -- added 2026-09-05, PDF B8
 <!-- Restricted per section 7's Technical Guidelines: every route below except
      /portal/login and /portal/magic-link requires a customer-type JWT
      (Authorization: Bearer <token>), never an internal one. -->
+POST /portal/signup                   -> added 2026-09-05; self-service, no admin approval.
+                                          Reuses an existing Customer row matched by
+                                          company_name, or creates one -- so a rep's earlier
+                                          quotation against that name resolves to this account
 POST /portal/login
 POST /portal/magic-link               -> no email service wired up; returns the token
                                           directly instead of emailing it
-GET /portal/quotations/{id}           -> restricted read; same margin/product_name fields
+GET /portal/me                        -> added 2026-09-05, frontend-integration pass;
+                                          {customer_user, customer} for the logged-in account
+GET /portal/quotations                -> added 2026-09-05; every quotation whose
+                                          customer_name matches this account's Customer.name
+GET /portal/negotiations              -> added 2026-09-05; this account's NegotiationRequests
+                                          across all of its quotations, newest first
+GET /portal/quotations/{id}           -> restricted read; same margin/product_name fields.
+                                          Ownership-checked (2026-09-05 fix): 404s if the
+                                          quotation's customer_name doesn't match the caller's
+                                          account -- previously any valid customer token could
+                                          read/negotiate on any quotation by guessing an id
 POST /portal/quotations/{id}/negotiate -> creates a NegotiationRequest, sets status "negotiation"
 POST /portal/quotations/{id}/confirm  -> applies the latest pending counter_discount_pct to
                                           its line, then re-runs the same scoring path as
@@ -105,7 +161,8 @@ POST /portal/quotations/{id}/confirm  -> applies the latest pending counter_disc
 
 ### Subscriptions
 POST /subscriptions
-GET /subscriptions                    -> added 2026-09-05
+GET /subscriptions                    -> added 2026-09-05; ?quotation_id= and ?status= filters
+                                          added in the frontend-integration pass
 GET /subscriptions/{id}               -> added 2026-09-05
 PATCH /subscriptions/{id}             -> added 2026-09-05; now accepts amount/qty too.
                                           Response shape changed same day:
@@ -131,6 +188,14 @@ GET /invoices
 GET /invoices/{id}                    -> added 2026-09-05
 POST /invoices/{id}/pay               -> added 2026-09-05; records a Payment, sets
                                           Invoice.status to "paid" once fully covered
+POST /invoices/{id}/razorpay-order    -> added 2026-09-05; creates a Razorpay order
+                                          (TEST mode) server-side for invoice.amount in
+                                          paise, returns {order_id, amount, currency, key_id}
+                                          for the frontend to open Checkout with
+POST /invoices/{id}/razorpay-verify   -> added 2026-09-05; verifies Checkout's
+                                          HMAC-SHA256 signature server-side (never trusts the
+                                          client-side success callback alone), then records a
+                                          Payment (method="razorpay") and marks the invoice paid
 
 ### Deal health
 GET /deal-health                      -> calls engines.detect_anomalies(); now also returns

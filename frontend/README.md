@@ -1,13 +1,18 @@
 # DealFlow360 frontend
 
-Frontend-only React + Vite + React Router + Tailwind CSS implementation for the 24-hour hackathon flow.
+React + Vite + React Router + Tailwind CSS. Fully wired to the live backend
+(`backend/api`) — no mock data, no local-only write stubs.
 
 ## Run
 
 ```bash
 npm install
+cp .env.example .env   # points VITE_API_BASE at the backend (default http://127.0.0.1:8000)
 npm run dev
 ```
+
+Start the backend first (`cd ../backend && uvicorn api.main:app --reload`) and
+seed it (`python -m seed.seed`) so there's real data to log in against.
 
 ## Build
 
@@ -17,44 +22,64 @@ npm run build
 
 ## Architecture
 
-- `src/components/ListScreen.jsx` — reusable list shell.
-- `src/components/DetailScreen.jsx` — reusable detail shell with optional side panel.
-- `src/components/StatusStepper.jsx` — reusable status tracker.
-- `src/api/client.js` — thin API boundary. Flip an individual `USE_MOCKS` key from `true` to `false` to call the real endpoint without changing screens.
-- `src/api/mockData.js` — mock objects shaped to the supplied Postgres schema.
+- `src/api/client.js` — the only place that talks to the backend. Every
+  function makes a real `fetch()` call and stores/attaches JWTs from
+  `POST /auth/login` (internal) and `POST /portal/login` (customer) —
+  separate sessions in `localStorage` so both can be open at once.
+- `src/context/RoleContext.jsx` — real auth state (`internalUser`,
+  `customerProfile`, `role`, `loginInternal`, `loginPortal`, `logout`),
+  backed by the sessions in `client.js`.
+- `src/components/InternalRouteGuard.jsx` / `PortalRouteGuard.jsx` — redirect
+  to `/` when there's no valid session, instead of rendering with fake data.
+- `src/components/ListScreen.jsx` / `DetailScreen.jsx` / `StatusStepper.jsx` —
+  reusable shells.
 
 ## Routes
 
-Internal:
-- `/`
-- `/app`
-- `/app/quotations`
-- `/app/quotations/1042`
-- `/app/approvals`
-- `/app/approvals/501`
-- `/app/fulfillment`
-- `/app/fulfillment/1037`
-- `/app/subscriptions`
-- `/app/billing`
-- `/app/invoices`
-- `/app/invoices/9001`
-- `/app/deal-health`
-- `/app/reports`
+Internal (requires an internal login):
+- `/app`, `/app/quotations`, `/app/quotations/new`, `/app/quotations/:id`
+- `/app/approvals`, `/app/approvals/:id`
+- `/app/fulfillment`, `/app/fulfillment/:id`
+- `/app/subscriptions`, `/app/billing/:id`
+- `/app/invoices`, `/app/invoices/:id`
+- `/app/deal-health`, `/app/reports`
+- Admin-only: `/app/admin/products`, `/app/admin/discount-config`,
+  `/app/admin/warehouses`, `/app/admin/subscription-plans`,
+  `/app/admin/reporting`
 
-Separate customer portal:
-- `/portal`
-- `/portal/messages`
-- `/portal/profile`
+Customer portal (requires a portal login, separate session):
+- `/portal`, `/portal/:quotationId`, `/portal/messages`, `/portal/profile`
 
-## Contract flags / known gaps
+Public:
+- `/` (login), `/signup` (internal team sign-up + customer portal sign-up)
 
-1. **Auth**: no login/signup endpoints exist yet. Login is deliberately mock-only.
-2. **Invoices**: the supplied schema says `GET /invoices` is read-only and no endpoint currently creates Invoice rows. "Record Payment" is therefore a UI placeholder.
-3. **Fulfillment writes**: the supplied schema describes `fulfillment_splits` but does not specify a write endpoint in the brief, so Manual Override is local-only until that endpoint exists.
-4. **Subscriptions**: `subscriptions` has no `quotation_id` FK, so the UI does not invent a quotation relationship.
-5. **Deal Health delivery slippage**: no promised-delivery/SLA field exists in the supplied schema, so the stretch dashboard treats fulfillment state as the available delivery-risk signal.
-6. **Quotation line editing**: the discount editor demonstrates the required live per-line check. It calls a local adapter now; replace that function with the real PATCH when the endpoint is available.
+## What's real
 
-## Wireframe treatment
+Every screen reads and writes through `client.js` to the actual FastAPI
+backend and Postgres database — quotation creation/editing/submission,
+the two-step Sales-Manager-then-Finance approval chain (with an editable
+decision note and an "Edit Quotation" shortcut after a Return), warehouse
+fulfillment splits, subscription proration and cancellation, invoice
+payment (manual or real Razorpay Checkout, test mode), quotation PDF
+export, the customer portal negotiate → auto-reenter-approval loop,
+self-service sign-up for both internal staff (Admin-approved) and customer
+accounts, admin user approvals, and full admin CRUD for products, discount
+tiers, warehouses, and subscription plans.
 
-The UI follows the supplied wireframe's compact blue DealFlow360 navigation, white card/table surfaces, yellow callout banners, small status chips, and separate portal shell. Admin/reporting and product/config screens are intentionally not implemented as requested.
+## Known, honest limitations
+
+1. **Fulfillment "Manual Override"** stays a local preview. The backend
+   computes the real suggested split from live stock/cost (`GET
+   /fulfillment/{id}`), but there is no contract-specified write endpoint to
+   persist a manual override — the PDF never calls for one.
+2. **XLS export** on the Reports screen is not implemented (PDF export
+   exists for quotations, via `GET /quotations/{id}/pdf`). Every number on
+   the Reports screen is still live from the backend.
+3. Internal endpoints don't have per-role UI restrictions beyond the Admin
+   area — e.g. a Sales Rep can technically open the Approvals screen. The
+   backend only distinguishes internal-vs-customer tokens, not per-role
+   scopes, so the frontend doesn't invent restrictions the API doesn't
+   enforce.
+4. **Razorpay** runs in TEST mode against the key pair in `backend/.env` —
+   use Razorpay's published test card/UPI credentials at checkout, never a
+   real card.

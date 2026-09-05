@@ -1,8 +1,9 @@
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { FileText, MessageSquare, User, ArrowLeft, ShieldCheck, Building } from "lucide-react";
+import { FileText, MessageSquare, User, ArrowLeft, ShieldCheck, Building, LogOut } from "lucide-react";
+import { useRole } from "../context/RoleContext";
 
 const portal = [
-  { label: "My Quotation", to: "/portal", icon: FileText },
+  { label: "My Quotations", to: "/portal", icon: FileText },
   { label: "Messages", to: "/portal/messages", icon: MessageSquare },
   { label: "Account Profile", to: "/portal/profile", icon: User },
 ];
@@ -10,6 +11,13 @@ const portal = [
 export default function PortalShell() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { customerProfile, logout } = useRole();
+  const customerName = customerProfile?.customer?.name || "Your account";
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
@@ -58,15 +66,15 @@ export default function PortalShell() {
           <div className="flex items-center gap-3 text-xs">
             <div className="hidden sm:flex items-center gap-1.5 text-slate-300">
               <Building className="h-3.5 w-3.5 text-indigo-400" />
-              <span>Acme Corp</span>
+              <span>{customerName}</span>
             </div>
             <button
-              onClick={() => navigate("/app")}
+              onClick={handleLogout}
               className="flex items-center gap-1 rounded bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
-              aria-label="Switch to internal sales console"
+              aria-label="Log out of the customer portal"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Internal Ops</span>
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Log Out</span>
             </button>
           </div>
         </div>

@@ -44,12 +44,19 @@ def dashboard_summary(activity_limit: int = Query(10, ge=1, le=50), db: Session 
     quotations_by_id = {q.id: q for q in db.query(Quotation).all()}
     activity: list[dict] = []
 
+    ACTION_VERBS = {
+        "create": "created", "edit": "edited", "delete": "deleted",
+        "approve": "approved", "reject": "rejected", "return": "returned",
+        "nudge": "nudged", "escalate": "escalated",
+    }
+
     for log in db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(50).all():
         actor = (log.after or {}).get("actor") if isinstance(log.after, dict) else None
         who = actor or (f"user #{log.user_id}" if log.user_id else "system")
+        verb = ACTION_VERBS.get(log.action, f"{log.action}d")
         activity.append({
             "type": f"{log.entity_type}_{log.action}",
-            "description": f"{who} {log.action}d {log.entity_type} #{log.entity_id}"
+            "description": f"{who} {verb} {log.entity_type} #{log.entity_id}"
             + (f" ({log.reason})" if log.reason else ""),
             "at": _iso(log.created_at),
         })

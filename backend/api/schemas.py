@@ -165,7 +165,7 @@ class UserSignupIn(BaseModel):
     name: str
     email: str
     password: str
-    role: str  # sales_rep / sales_manager / finance / admin
+    role: str  # sales_rep / sales_manager / finance (admin cannot self-signup)
     seniority: Optional[int] = None
 
 
@@ -176,6 +176,7 @@ class UserOut(BaseModel):
     email: str
     role: str
     seniority: Optional[int] = None
+    status: str = "approved"
     created_at: datetime
 
 
@@ -212,6 +213,39 @@ class PortalMagicLinkOut(BaseModel):
     # No email service is wired up — normally this token would be emailed,
     # not returned directly. Returned here so the flow is testable end-to-end.
     magic_link_token: str
+
+
+class CustomerSignupIn(BaseModel):
+    company_name: str
+    email: str
+    password: str
+    # No tier field -- default_tier is never customer-chosen. It starts at
+    # "Bronze" and is recalculated automatically from completed order
+    # volume (see api.tiering.recalc_customer_tier), so a bigger, more
+    # frequent buyer earns a higher tier (and its higher discount ceiling)
+    # instead of self-selecting one at signup.
+
+
+class CustomerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    default_tier: str
+    created_at: datetime
+
+
+class CustomerUserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    customer_id: int
+    email: str
+    auth_method: str
+    created_at: datetime
+
+
+class PortalMeOut(BaseModel):
+    customer_user: CustomerUserOut
+    customer: CustomerOut
 
 
 # ---- Negotiation (customer portal) ----
@@ -394,3 +428,25 @@ class DealHealthActionOut(BaseModel):
     status: str
     action: str
     quotation_id: int
+
+
+# ---- Admin: user approval ----
+
+class UserApprovalActionIn(BaseModel):
+    note: Optional[str] = None
+
+
+# ---- Razorpay ----
+
+class RazorpayOrderOut(BaseModel):
+    order_id: str
+    amount: int  # paise
+    currency: str = "INR"
+    key_id: str
+    invoice_id: int
+
+
+class RazorpayVerifyIn(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str

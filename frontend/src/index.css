@@ -15,7 +15,15 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background-color: #f8fafc; color: #0f172a; }
 button, input, select, textarea { font: inherit; }
-button { cursor: pointer; }
+button {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: transparent;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+button:active { color: inherit; }
 
 @layer utilities {
   .shadow-xs {

@@ -1,4 +1,13 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import {
+  getInternalSession,
+  getCustomerSession,
+  loginInternal as apiLoginInternal,
+  loginPortal as apiLoginPortal,
+  signupPortal as apiSignupPortal,
+  logoutInternal,
+  logoutPortal,
+} from "../api/client";
 
 export const ROLES = {
   SALES_REP: "sales_rep",
@@ -44,21 +53,69 @@ export const ROLE_DETAILS = {
 const RoleContext = createContext(null);
 
 export function RoleProvider({ children }) {
-  // Default to sales_rep for seamless live demo and testing; memory-only state
-  const [role, setRole] = useState(ROLES.SALES_REP);
+  const [internalSession, setInternalSessionState] = useState(() => getInternalSession());
+  const [customerSession, setCustomerSessionState] = useState(() => getCustomerSession());
+
+  // Pick up session changes made by client.js (e.g. a 401 clearing the
+  // session, or another tab logging out) by re-reading on focus.
+  useEffect(() => {
+    const sync = () => {
+      setInternalSessionState(getInternalSession());
+      setCustomerSessionState(getCustomerSession());
+    };
+    window.addEventListener("focus", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  const role = internalSession?.user?.role || (customerSession ? ROLES.CUSTOMER : null);
+
+  const loginInternal = useCallback(async (email, password) => {
+    const data = await apiLoginInternal(email, password);
+    setInternalSessionState(getInternalSession());
+    return data;
+  }, []);
+
+  const loginPortal = useCallback(async (email, password) => {
+    const data = await apiLoginPortal(email, password);
+    setCustomerSessionState(getCustomerSession());
+    return data;
+  }, []);
+
+  const signupPortal = useCallback(async (form) => {
+    const data = await apiSignupPortal(form);
+    setCustomerSessionState(getCustomerSession());
+    return data;
+  }, []);
+
+  const logout = useCallback(() => {
+    logoutInternal();
+    logoutPortal();
+    setInternalSessionState(null);
+    setCustomerSessionState(null);
+  }, []);
 
   return (
     <RoleContext.Provider
       value={{
         role,
-        setRole,
         roles: ROLES,
         roleDetails: ROLE_DETAILS,
+        internalUser: internalSession?.user || null,
+        customerProfile: customerSession?.profile || null,
+        isAuthenticated: Boolean(internalSession || customerSession),
         isSalesRep: role === ROLES.SALES_REP,
         isSalesManager: role === ROLES.SALES_MANAGER,
         isFinance: role === ROLES.FINANCE,
         isCustomer: role === ROLES.CUSTOMER,
         isAdmin: role === ROLES.ADMIN,
+        loginInternal,
+        loginPortal,
+        signupPortal,
+        logout,
       }}
     >
       {children}

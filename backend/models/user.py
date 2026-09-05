@@ -20,3 +20,9 @@ class User(Base):
     role = Column(String, nullable=False)  # sales_rep / sales_manager / finance / admin
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     seniority = Column(SmallInteger, nullable=True)  # 0 junior, 1 mid, 2 principal (sales_rep only)
+    # pending / approved / rejected. Self-service /auth/signup creates
+    # "pending" accounts that cannot log in until an Admin approves them
+    # (POST /admin/users/{id}/approve) -- seeded/admin-created users default
+    # to "approved" via the column's server_default so existing rows/logins
+    # are unaffected.
+    status = Column(String, nullable=False, server_default="approved")

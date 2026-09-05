@@ -17,9 +17,10 @@ import { code, date } from "../utils";
 const KANBAN_STAGES = [
   { id: "draft", label: "Draft", color: "border-slate-300 bg-slate-50/50" },
   { id: "pending_approval", label: "Pending Approval", color: "border-amber-300 bg-amber-50/30" },
+  { id: "negotiation", label: "Under Negotiation", color: "border-indigo-300 bg-indigo-50/30" },
   { id: "approved", label: "Approved", color: "border-emerald-300 bg-emerald-50/30" },
-  { id: "fulfillment", label: "Fulfillment", color: "border-sky-300 bg-sky-50/30" },
   { id: "confirmed", label: "Confirmed", color: "border-emerald-300 bg-emerald-50/30" },
+  { id: "rejected", label: "Rejected", color: "border-rose-300 bg-rose-50/30" },
 ];
 
 export default function QuotationsList() {
@@ -85,7 +86,7 @@ export default function QuotationsList() {
           action={
             <button
               className="df-btn-primary"
-              onClick={() => navigate("/app/quotations/1042")}
+              onClick={() => navigate("/app/quotations/new")}
               aria-label="Create new quotation"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -135,7 +136,7 @@ export default function QuotationsList() {
             </div>
             <button
               className="df-btn-primary"
-              onClick={() => navigate("/app/quotations/1042")}
+              onClick={() => navigate("/app/quotations/new")}
               aria-label="Create new quotation"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />

@@ -13,8 +13,9 @@ import {
   Menu,
   X,
   Layers,
-  Sparkles,
+  Settings,
 } from "lucide-react";
+import { useRole, ROLE_DETAILS } from "../context/RoleContext";
 
 const internal = [
   { label: "Dashboard", to: "/app", icon: LayoutDashboard },
@@ -30,7 +31,17 @@ const internal = [
 export default function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { internalUser, isAdmin, logout } = useRole();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const navItems = isAdmin
+    ? [...internal, { label: "Admin", to: "/app/admin/products", icon: Settings }]
+    : internal;
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
@@ -53,7 +64,7 @@ export default function AppShell() {
 
             {/* Desktop / Tablet Nav */}
             <nav className="hidden md:flex items-center gap-1" aria-label="Main Navigation">
-              {internal.map(({ label, to, icon: Icon }) => (
+              {navItems.map(({ label, to, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -61,7 +72,7 @@ export default function AppShell() {
                   className={({ isActive }) =>
                     `flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 ${
                       isActive
-                        ? "bg-white text-brand-800 shadow-xs scale-[1.02]"
+                        ? "bg-white !text-brand-700 shadow-xs scale-[1.02]"
                         : "text-white/80 hover:bg-white/10 hover:text-white"
                     }`
                   }
@@ -77,17 +88,19 @@ export default function AppShell() {
           <div className="flex items-center gap-2.5 text-xs">
             <div className="hidden lg:flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 border border-white/15 text-[11px] text-white/90">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Live Mocks</span>
+              <span>Live Backend</span>
             </div>
 
             <div className="hidden sm:flex flex-col text-right leading-none">
-              <span className="font-semibold text-white text-xs">Jordan Lee</span>
-              <span className="text-[10px] text-white/70">Sales Rep</span>
+              <span className="font-semibold text-white text-xs">{internalUser?.name || "—"}</span>
+              <span className="text-[10px] text-white/70">
+                {ROLE_DETAILS[internalUser?.role]?.label || internalUser?.role}
+              </span>
             </div>
 
             <button
-              onClick={() => navigate("/")}
-              className="flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-white/20 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40"
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-white/20 active:bg-white/25 active:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white/40"
               aria-label="Log out of application"
             >
               <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
@@ -97,7 +110,7 @@ export default function AppShell() {
             {/* Mobile menu button */}
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="md:hidden rounded-md bg-white/10 p-1.5 text-white hover:bg-white/20 focus:outline-none"
+              className="md:hidden rounded-md bg-white/10 p-1.5 text-white hover:bg-white/20 active:bg-white/25 active:text-white focus:outline-none"
               aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
               aria-expanded={mobileOpen}
             >
@@ -109,7 +122,7 @@ export default function AppShell() {
         {/* Mobile Navigation Drawer */}
         {mobileOpen && (
           <nav className="md:hidden border-t border-white/10 bg-[#094777] px-4 py-3 space-y-1 animate-fade-slide-in">
-            {internal.map(({ label, to, icon: Icon }) => (
+            {navItems.map(({ label, to, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -118,7 +131,7 @@ export default function AppShell() {
                 className={({ isActive }) =>
                   `flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
                     isActive
-                      ? "bg-white text-brand-800 font-bold"
+                      ? "bg-white !text-brand-700 font-bold"
                       : "text-white/80 hover:bg-white/10 hover:text-white"
                   }`
                 }

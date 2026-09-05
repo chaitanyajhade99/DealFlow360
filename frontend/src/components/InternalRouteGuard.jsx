@@ -1,12 +1,15 @@
-import { Navigate, Outlet } from "react-router-dom";
-import { useRole, ROLES } from "../context/RoleContext";
+import { Navigate } from "react-router-dom";
+import { useRole } from "../context/RoleContext";
 import AppShell from "./AppShell";
 
 export default function InternalRouteGuard() {
-  const { role } = useRole();
+  const { role, isCustomer, internalUser } = useRole();
 
-  if (role === ROLES.CUSTOMER) {
-    return <Navigate to="/portal/Q-1042" replace />;
+  if (isCustomer) {
+    return <Navigate to="/portal" replace />;
+  }
+  if (!role || !internalUser) {
+    return <Navigate to="/" replace />;
   }
 
   return <AppShell />;
