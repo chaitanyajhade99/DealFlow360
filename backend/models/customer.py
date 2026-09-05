@@ -22,6 +22,15 @@ class Customer(Base):
     name = Column(String, unique=True, nullable=False)
     default_tier = Column(String, nullable=False)  # Bronze / Silver / Gold
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # pending / approved / rejected. A customer created by an internal user
+    # (POST /customers, or the quotation builder's "add new customer") is
+    # auto-"approved" via the column default -- an employee already vetted
+    # it. A customer created via self-service /portal/signup starts
+    # "pending": it can't log in, and GET /customers (the quotation
+    # builder's customer picker) only lists "approved" ones, so a
+    # newly-signed-up company doesn't show up anywhere until an Admin
+    # approves it (see api.admin_customers).
+    status = Column(String, nullable=False, server_default="approved")
 
     portal_users = relationship("CustomerUser", back_populates="customer", cascade="all, delete-orphan")
 

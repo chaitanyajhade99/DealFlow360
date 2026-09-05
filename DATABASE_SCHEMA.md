@@ -252,6 +252,7 @@ Finance/Operations User, Admin — Customer is a separate portal role, see
 | name | text, unique | e.g. `"Acme Corp"` |
 | default_tier | text | Bronze/Silver/Gold |
 | created_at | timestamptz | |
+| status | text, `NOT NULL DEFAULT 'approved'` | **added 2026-09-06.** `"pending"` \| `"approved"` \| `"rejected"`. Mirrors `users.status`'s pattern exactly. A company created by an internal user (`POST /customers`) is auto-`"approved"`; one created via self-service `POST /portal/signup` starts `"pending"` and stays invisible to `GET /customers` (the quotation builder's picker defaults to `?status=approved`) and unable to log in until an Admin approves it via `POST /admin/customers/{id}/approve`. Applied via the same additive `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` pattern at app startup. |
 
 **Not FK-linked from `quotations`** — `quotations.customer_name`/`customer_tier` stay free-text/snapshot fields (per the existing contract, to avoid an ALTER on the deployed table). Join by matching `quotations.customer_name == customers.name` when you need one; a real FK is a follow-up contract change.
 

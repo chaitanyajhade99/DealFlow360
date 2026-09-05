@@ -1,9 +1,10 @@
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { FileText, MessageSquare, User, ArrowLeft, ShieldCheck, Building, LogOut } from "lucide-react";
+import { FileText, MessageSquare, User, ArrowLeft, ShieldCheck, Building, LogOut, Receipt } from "lucide-react";
 import { useRole } from "../context/RoleContext";
 
 const portal = [
   { label: "My Quotations", to: "/portal", icon: FileText },
+  { label: "Billing", to: "/portal/billing", icon: Receipt },
   { label: "Messages", to: "/portal/messages", icon: MessageSquare },
   { label: "Account Profile", to: "/portal/profile", icon: User },
 ];

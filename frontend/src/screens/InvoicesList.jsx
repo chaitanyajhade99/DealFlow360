@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Receipt, DollarSign, Calendar } from "lucide-react";
+import { ArrowRight, Receipt, Calendar } from "lucide-react";
 import { getInvoices } from "../api/client";
 import ListScreen from "../components/ListScreen";
 import StatusBadge from "../components/StatusBadge";

@@ -6,9 +6,9 @@ from granting themselves Sales Manager / Finance access unchecked.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from models import User, get_db
+from models import Customer, User, get_db
 from api.deps import get_current_internal_user
-from api.schemas import UserApprovalActionIn, UserOut
+from api.schemas import CustomerApprovalActionIn, CustomerOut, UserApprovalActionIn, UserOut
 
 router = APIRouter(tags=["admin"])
 
@@ -57,3 +57,43 @@ def reject_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.get("/admin/customers", response_model=list[CustomerOut])
+def list_customers_for_admin(
+    status: str | None = Query(None, description="filter: pending / approved / rejected"),
+    db: Session = Depends(get_db),
+    _admin=Depends(_require_admin),
+):
+    query = db.query(Customer)
+    if status:
+        query = query.filter(Customer.status == status)
+    return query.order_by(Customer.id.desc()).all()
+
+
+@router.post("/admin/customers/{id}/approve", response_model=CustomerOut)
+def approve_customer(
+    id: int, payload: CustomerApprovalActionIn = CustomerApprovalActionIn(),
+    db: Session = Depends(get_db), _admin=Depends(_require_admin),
+):
+    customer = db.get(Customer, id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    customer.status = "approved"
+    db.commit()
+    db.refresh(customer)
+    return customer
+
+
+@router.post("/admin/customers/{id}/reject", response_model=CustomerOut)
+def reject_customer(
+    id: int, payload: CustomerApprovalActionIn = CustomerApprovalActionIn(),
+    db: Session = Depends(get_db), _admin=Depends(_require_admin),
+):
+    customer = db.get(Customer, id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    customer.status = "rejected"
+    db.commit()
+    db.refresh(customer)
+    return customer

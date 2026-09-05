@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { getInvoiceDetail, payInvoice, createRazorpayOrder, verifyRazorpayPayment } from "../api/client";
+import { getInvoiceDetail, payInvoice } from "../api/client";
 import DetailScreen from "../components/DetailScreen";
 import Panel from "../components/Panel";
 import StatusStepper from "../components/StatusStepper";
@@ -8,19 +8,6 @@ import StatusBadge from "../components/StatusBadge";
 import Skeleton from "../components/Skeleton";
 import { useToast } from "../context/ToastContext";
 import { code, date, lineTotal, money, pct } from "../utils";
-
-const RAZORPAY_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
-
-function loadRazorpayScript() {
-  return new Promise((resolve) => {
-    if (window.Razorpay) return resolve(true);
-    const script = document.createElement("script");
-    script.src = RAZORPAY_SCRIPT_URL;
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
 
 export default function InvoiceDetail() {
   const { id } = useParams();
@@ -73,45 +60,6 @@ export default function InvoiceDetail() {
     }
   };
 
-  const handlePayWithRazorpay = async () => {
-    setBusy(true);
-    try {
-      const loaded = await loadRazorpayScript();
-      if (!loaded) throw new Error("Could not load Razorpay checkout script.");
-      const order = await createRazorpayOrder(data.invoice.id);
-      const rzp = new window.Razorpay({
-        key: order.key_id,
-        amount: order.amount,
-        currency: order.currency,
-        order_id: order.order_id,
-        name: "DealFlow360",
-        description: `Invoice ${code("INV", data.invoice.id)}`,
-        theme: { color: "#0c5a96" },
-        handler: async (response) => {
-          try {
-            await verifyRazorpayPayment(data.invoice.id, {
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-            });
-            toast("Razorpay payment verified — invoice marked paid.", "success");
-            load();
-          } catch (err) {
-            toast(err.message || "Payment verification failed.", "error");
-          } finally {
-            setBusy(false);
-          }
-        },
-        modal: { ondismiss: () => setBusy(false) },
-      });
-      rzp.on("payment.failed", () => toast("Payment failed or was cancelled.", "error"));
-      rzp.open();
-    } catch (err) {
-      toast(err.message || "Could not start Razorpay checkout.", "error");
-      setBusy(false);
-    }
-  };
-
   return (
     <DetailScreen
       title={`Invoice Commercial Record · ${code("INV", data.invoice.id)}`}
@@ -119,16 +67,14 @@ export default function InvoiceDetail() {
         "Q",
         data.invoice.quotation_id
       )} · Due ${date(data.invoice.due_date)}`}
-      actions={
-        isPaid
-          ? []
-          : [{ label: busy ? "Working..." : "Pay with Razorpay", primary: true, onClick: handlePayWithRazorpay }]
-      }
+      actions={[]}
       banner={{
         title: isPaid ? "Invoice Settlement Complete:" : "Receivable Outstanding:",
-        body: `Commercial invoice amount of ${money(data.invoice.amount)} is marked as ${
-          isPaid ? "PAID" : "UNPAID"
-        }. Due by ${date(data.invoice.due_date)}.`,
+        body: isPaid
+          ? `Commercial invoice amount of ${money(data.invoice.amount)} is marked as PAID.`
+          : `Commercial invoice amount of ${money(
+              data.invoice.amount
+            )} is marked as UNPAID. Payment is collected from the customer directly, through their portal (Razorpay Checkout) — this screen is view-only for the ops team, plus a gated manual-reconciliation override below for genuine offline payments.`,
       }}
     >
       {/* Order-to-Payment Lifecycle Stepper */}
@@ -200,7 +146,7 @@ export default function InvoiceDetail() {
             <div className="font-mono text-xl font-black text-slate-900 mt-0.5">
               {money(data.invoice.amount)}
             </div>
-            <div className="text-[11px] text-slate-400">USD currency</div>
+            <div className="text-[11px] text-slate-400">INR currency</div>
           </div>
 
           <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3.5">

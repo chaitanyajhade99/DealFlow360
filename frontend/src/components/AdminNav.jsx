@@ -6,6 +6,7 @@ const links = [
   { label: "Warehouses", to: "/app/admin/warehouses" },
   { label: "Subscription Plans", to: "/app/admin/subscription-plans" },
   { label: "User Approvals", to: "/app/admin/users" },
+  { label: "Customer Approvals", to: "/app/admin/customers" },
   { label: "Reporting", to: "/app/admin/reporting" },
 ];
 

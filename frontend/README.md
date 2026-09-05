@@ -45,10 +45,10 @@ Internal (requires an internal login):
 - `/app/deal-health`, `/app/reports`
 - Admin-only: `/app/admin/products`, `/app/admin/discount-config`,
   `/app/admin/warehouses`, `/app/admin/subscription-plans`,
-  `/app/admin/reporting`
+  `/app/admin/users`, `/app/admin/customers`, `/app/admin/reporting`
 
 Customer portal (requires a portal login, separate session):
-- `/portal`, `/portal/:quotationId`, `/portal/messages`, `/portal/profile`
+- `/portal`, `/portal/:quotationId`, `/portal/billing`, `/portal/messages`, `/portal/profile`
 
 Public:
 - `/` (login), `/signup` (internal team sign-up + customer portal sign-up)

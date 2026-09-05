@@ -44,9 +44,14 @@ export default function Signup() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await signupPortal(portalForm);
-      toast("Account created — welcome to the customer portal.", "success");
-      navigate("/portal");
+      const result = await signupPortal(portalForm);
+      if (result.status === "pending") {
+        setDone(true);
+        toast("Sign-up submitted — awaiting admin approval.", "success");
+      } else {
+        toast("Account created — welcome to the customer portal.", "success");
+        navigate("/portal");
+      }
     } catch (err) {
       toast(err.message || "Sign-up failed.", "error");
     } finally {
@@ -94,6 +99,13 @@ export default function Signup() {
             </div>
           )}
 
+          {mode === "portal" && done && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900">
+              <b>Request submitted.</b> An Admin needs to approve your company's account before
+              you can log in — check back soon.
+            </div>
+          )}
+
           {mode === "internal" && !done && (
             <form onSubmit={handleInternalSubmit} className="space-y-3.5">
               <div>
@@ -128,7 +140,7 @@ export default function Signup() {
             </form>
           )}
 
-          {mode === "portal" && (
+          {mode === "portal" && !done && (
             <form onSubmit={handlePortalSubmit} className="space-y-3.5">
               <div>
                 <label className="df-label">Company Name</label>
@@ -153,7 +165,8 @@ export default function Signup() {
                 If your company already has open quotations with us, use the same company name
                 to link your account to them. New accounts start at <b>Bronze</b> — your tier
                 (and discount ceiling) rises automatically as more of your orders close, no
-                need to pick one.
+                need to pick one. A brand-new company needs a quick Admin approval before its
+                first login; an already-approved company's teammates can sign in right away.
               </p>
             </form>
           )}

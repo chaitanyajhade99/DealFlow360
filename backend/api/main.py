@@ -13,6 +13,7 @@ from api import (
     admin,
     approvals,
     auth,
+    customers,
     dashboard,
     deal_health,
     discount_tiers,
@@ -54,6 +55,10 @@ Base.metadata.create_all(bind=engine)
 # only creates missing tables, it never ALTERs existing ones.
 with engine.begin() as conn:
     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR NOT NULL DEFAULT 'approved'"))
+    # Currency switched from USD to INR project-wide -- normalize any rows
+    # persisted before that change (both local and the shared Supabase DB).
+    conn.execute(text("UPDATE price_lists SET currency = 'INR' WHERE currency = 'USD'"))
+    conn.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS status VARCHAR NOT NULL DEFAULT 'approved'"))
 
 # /auth and /portal issue tokens, so they stay open. Every other router is
 # internal-workspace-only (PDF A1: "after login, internal users can access
@@ -76,6 +81,7 @@ app.include_router(products.router, dependencies=_internal)
 app.include_router(reports.router, dependencies=_internal)
 app.include_router(dashboard.router, dependencies=_internal)
 app.include_router(admin.router, dependencies=_internal)
+app.include_router(customers.router, dependencies=_internal)
 
 
 @app.get("/health")

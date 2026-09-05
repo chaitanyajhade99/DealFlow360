@@ -26,6 +26,10 @@ Test credentials (all use the same password for convenience):
 """
 from datetime import date, datetime, timedelta, timezone
 
+from api.approvals import decide_approval
+from api.quotations import score_and_route
+from api.schemas import ApprovalDecisionIn
+from seed.bulk_data import RNG, build_companies, build_products, random_email, random_person_name
 from models import (
     Approval,
     AuditLog,
@@ -120,6 +124,30 @@ def seed():
         finance = User(name="K. Iyer", email="k.iyer@dealflow360.example", password_hash=hash_password(SEED_PASSWORD), role="finance")
         admin = User(name="Admin", email="admin@dealflow360.example", password_hash=hash_password(SEED_PASSWORD), role="admin")
         db.add_all([rep, rep2, manager, finance, admin])
+
+        # Extra Indian-named sales org so quotation volume can be spread
+        # across a realistic-sized team, not just 2 reps.
+        extra_internal = [
+            ("Rohan Mehta", "sales_rep", 2), ("Ananya Kulkarni", "sales_rep", 1),
+            ("Vikram Chatterjee", "sales_rep", 0), ("Sneha Malhotra", "sales_rep", 1),
+            ("Arjun Naidu", "sales_rep", 2), ("Divya Pillai", "sales_rep", 0),
+            ("Karan Deshmukh", "sales_manager", None), ("Priya Banerjee", "sales_manager", None),
+            ("Suresh Yadav", "finance", None), ("Meera Joshi", "finance", None),
+        ]
+        extra_users = []
+        for i, (name, role, seniority) in enumerate(extra_internal):
+            email = f"{name.lower().replace(' ', '.')}@dealflow360.example"
+            extra_users.append(User(name=name, email=email, password_hash=hash_password(SEED_PASSWORD), role=role, seniority=seniority))
+        db.add_all(extra_users)
+
+        # A couple of internal sign-ups still awaiting Admin approval -- real
+        # data for the User Approvals screen instead of an empty queue.
+        db.add_all([
+            User(name="Farhan Sheikh", email="farhan.sheikh@dealflow360.example",
+                 password_hash=hash_password(SEED_PASSWORD), role="sales_rep", status="pending"),
+            User(name="Ritu Chawla", email="ritu.chawla@dealflow360.example",
+                 password_hash=hash_password(SEED_PASSWORD), role="finance", status="pending"),
+        ])
         db.flush()
 
         # --- Warehouses ---
@@ -185,7 +213,7 @@ def seed():
             product_id=products_by_code["LAPTOP-PRO-14"].id, attribute="RAM", value="32GB", extra_price=180.00,
         ))
         db.add(PriceList(
-            product_id=products_by_code["LAPTOP-PRO-14"].id, customer_tier="Gold", currency="USD",
+            product_id=products_by_code["LAPTOP-PRO-14"].id, customer_tier="Gold", currency="INR",
             price_rule={"type": "fixed", "price": 1150.00},
         ))
         db.add(UpsellRule(
@@ -204,6 +232,41 @@ def seed():
             is_promoted=True, min_margin_pct=15,
         ))
 
+        # --- Bulk Indian-market product catalog (~80 SKUs, PDF A2) ---
+        bulk_products = build_products()
+        for p in bulk_products:
+            product = Product(
+                product_code=p["code"], name=p["name"], category=p["category"],
+                price=p["price"], unit=p["unit"],
+                is_subscription=p.get("is_subscription", False),
+                recurring_cycle=p.get("recurring_cycle"),
+                quantity_on_hand=p.get("quantity_on_hand"),
+                tax_pct=18 if p["category"] != "Services" else 18,  # GST standard rate
+                cost=p.get("cost"), is_promoted=p.get("is_promoted", False),
+                promo_tag=p.get("promo_tag"),
+            )
+            db.add(product)
+            products_by_code[p["code"]] = product
+        db.flush()
+
+        # Pair every promoted Hardware/Subscription product with a plausible
+        # accessory or service so GET /quotations/{id}/upsell-suggestions
+        # (PDF B5) has real coverage across the catalog, not just 2 SKUs.
+        hardware_codes = [c for c, prod in products_by_code.items() if prod.category == "Hardware"]
+        service_codes = [c for c, prod in products_by_code.items() if prod.category == "Services"]
+        subscription_codes = [c for c, prod in products_by_code.items() if prod.category == "Subscription"]
+        accessory_pool = hardware_codes + service_codes + subscription_codes
+        promoted_sources = [c for c, prod in products_by_code.items() if prod.is_promoted]
+        for source_code in promoted_sources:
+            candidates = [c for c in accessory_pool if c != source_code]
+            for suggested_code in RNG.sample(candidates, k=min(2, len(candidates))):
+                db.add(UpsellRule(
+                    source_product_id=products_by_code[source_code].id,
+                    suggested_product_id=products_by_code[suggested_code].id,
+                    is_promoted=products_by_code[suggested_code].is_promoted,
+                    min_margin_pct=RNG.choice([8, 10, 12, 15]),
+                ))
+
         # --- Subscription plan definitions (PDF A5) ---
         db.add(SubscriptionPlan(
             name="Care Plan 2yr", cycle="Monthly",
@@ -215,6 +278,41 @@ def seed():
             proration_rule={"mid_cycle_qty_change": "prorate_remaining_days"},
             cancellation_rule={"refund": "partial", "notice_days": 15},
         ))
+        db.add(SubscriptionPlan(
+            name="Basic Support Plan", cycle="Monthly",
+            proration_rule={"mid_cycle_qty_change": "prorate_remaining_days"},
+            cancellation_rule={"refund": "none", "notice_days": 7},
+        ))
+        db.add(SubscriptionPlan(
+            name="SLA Gold Support Plan", cycle="Quarterly",
+            proration_rule={"mid_cycle_qty_change": "prorate_remaining_days"},
+            cancellation_rule={"refund": "partial", "notice_days": 30},
+        ))
+        db.add(SubscriptionPlan(
+            name="AWS Managed Support", cycle="Monthly",
+            proration_rule={"mid_cycle_qty_change": "prorate_remaining_days"},
+            cancellation_rule={"refund": "full", "notice_days": 15},
+        ))
+
+        # --- Extra Indian-city warehouses (PDF A4) -- Main Warehouse + East
+        # Depot above stay as the original 2; add 8 more so fulfillment
+        # splits have real multi-warehouse variety. ---
+        extra_warehouse_cities = [
+            "Mumbai", "Bengaluru", "Chennai", "Hyderabad", "Pune", "Kolkata", "Ahmedabad", "Jaipur",
+        ]
+        stockable_codes = [c for c, prod in products_by_code.items() if prod.category != "Services"]
+        for city in extra_warehouse_cities:
+            stock = [
+                {"product_id": code, "qty": RNG.randint(3, 120)}
+                for code in RNG.sample(stockable_codes, k=min(18, len(stockable_codes)))
+            ]
+            db.add(Warehouse(
+                name=f"{city} Fulfillment Center",
+                stock=stock,
+                shipping_cost_per_unit=round(RNG.uniform(3.5, 9.0), 2),
+                shipment_fixed_cost=round(RNG.uniform(8.0, 25.0), 2),
+                replenishment_rules={"reorder_point": RNG.randint(3, 12), "reorder_qty": RNG.randint(20, 60)},
+            ))
 
         # --- Customers + portal users (PDF A1 / section 3) ---
         acme_customer = Customer(name="Acme Corp", default_tier="Gold")
@@ -442,13 +540,162 @@ def seed():
             counter_discount_pct=14, status="pending", created_at=days_ago(1),
         ))
 
+        # =====================================================================
+        # Bulk Indian-market dataset: ~78 additional customers and ~90+
+        # quotations, run through the REAL scoring/approval/invoicing logic
+        # (api.quotations.score_and_route, api.approvals.decide_approval) so
+        # every status, risk band, invoice, subscription, and tier reflects
+        # genuine business rules instead of hand-picked values.
+        # =====================================================================
+        existing_names = {"Acme Corp", "Beta Industries", "Delta LLC", "Globex Manufacturing", "Initech Solutions"}
+        bulk_companies = build_companies(78, existing_names)
+        all_reps = [rep, rep2] + [u for u in extra_users if u.role == "sales_rep"]
+        product_codes = list(products_by_code.keys())
+
+        bulk_customers = []
+        for i, company in enumerate(bulk_companies):
+            is_pending = i < 8  # first 8 stay "pending" -- populates the Customer Approvals queue
+            customer = Customer(name=company["name"], default_tier="Bronze", status="pending" if is_pending else "approved")
+            db.add(customer)
+            bulk_customers.append((customer, company, is_pending))
+        db.flush()
+
+        # A portal contact for every pending company (that's what put them in
+        # the queue) plus roughly half the approved ones (not every company
+        # self-registers a portal user).
+        for idx, (customer, company, is_pending) in enumerate(bulk_customers):
+            if is_pending or idx % 2 == 0:
+                person = random_person_name()
+                db.add(CustomerUser(
+                    customer_id=customer.id, email=random_email(person, company["name"], idx),
+                    password_hash=hash_password(SEED_PASSWORD), auth_method="password",
+                ))
+        db.flush()
+
+        approved_bulk_customers = [c for c, _company, pending in bulk_customers if not pending]
+
+        for customer in approved_bulk_customers:
+            n_quotes = 2 if RNG.random() < 0.2 else 1
+            for _ in range(n_quotes):
+                sales_rep = RNG.choice(all_reps)
+                tier = customer.default_tier  # re-read each loop -- may have risen mid-loop
+                tier_limits = tiers_by_name[tier].category_limits
+                chosen_codes = RNG.sample(product_codes, k=min(RNG.randint(1, 4), len(product_codes)))
+                risk_roll = RNG.random()
+                created_days_ago = RNG.randint(0, 45)
+
+                q = Quotation(
+                    customer_name=customer.name, customer_tier=tier, status="draft",
+                    sales_rep_id=sales_rep.id, created_at=days_ago(created_days_ago),
+                    expected_delivery_date=date.today() + timedelta(days=RNG.randint(-5, 30)),
+                )
+                db.add(q)
+                db.flush()
+
+                for code in chosen_codes:
+                    product = products_by_code[code]
+                    limit = tier_limits.get(product.category, 5)
+                    if risk_roll < 0.55:
+                        discount = round(RNG.uniform(0, max(limit - 1, 0.5)), 1)  # within limit
+                    elif risk_roll < 0.8:
+                        discount = round(limit + RNG.uniform(0.5, 3), 1)  # mildly over -> MEDIUM
+                    else:
+                        discount = round(limit + RNG.uniform(4, 12), 1)  # well over -> HIGH
+                    db.add(QuotationLine(
+                        quotation_id=q.id, product_id=code, category=product.category,
+                        qty=RNG.randint(1, 12), unit_price=float(product.price),
+                        discount_pct=discount, category_limit_pct=limit,
+                    ))
+                db.flush()
+
+                approval = score_and_route(db, q)
+                db.flush()
+
+                # Simulate a decision on most non-LOW quotations so the
+                # Approvals queue isn't just an unworked backlog -- ~65% get
+                # resolved, ~35% stay genuinely pending for the demo.
+                if approval.stage in ("sales_manager", "finance") and RNG.random() < 0.65:
+                    outcome_roll = RNG.random()
+                    if outcome_roll < 0.7:
+                        action, note = "approve", "Approved within acceptable commercial terms."
+                    elif outcome_roll < 0.87:
+                        action, note = "reject", "Discount erodes margin beyond policy floor."
+                    else:
+                        action, note = "return", "Please revise the discount and resubmit."
+                    approval = decide_approval(approval.id, ApprovalDecisionIn(action=action, user="M. Shah", note=note), db)
+                    db.flush()
+                    # HIGH-risk approvals at sales_manager escalate to finance
+                    # -- close ~70% of those too for a real two-step chain.
+                    if approval.stage == "finance" and RNG.random() < 0.7:
+                        approval = decide_approval(
+                            approval.id,
+                            ApprovalDecisionIn(action="approve", user="K. Iyer", note="Finance sign-off granted."),
+                            db,
+                        )
+                        db.flush()
+
+                # A slice of newly-confirmed deals get countered by the
+                # customer post-confirmation -- gives the portal negotiation
+                # flow live data across many accounts, not just one.
+                cu = db.query(CustomerUser).filter_by(customer_id=customer.id).first()
+                if q.status == "confirmed" and cu and RNG.random() < 0.12:
+                    line = db.query(QuotationLine).filter_by(quotation_id=q.id).first()
+                    if line:
+                        q.status = "negotiation"
+                        db.add(NegotiationRequest(
+                            quotation_id=q.id, quotation_line_id=line.id, customer_user_id=cu.id,
+                            message="Could we get a better rate on this line for a larger repeat order?",
+                            counter_discount_pct=round(float(line.discount_pct) + RNG.uniform(2, 6), 1),
+                            status="pending", created_at=days_ago(max(created_days_ago - 1, 0)),
+                        ))
+
+                # Settle payment on a majority of invoiced deals -- a mix of
+                # the real Razorpay path and manual reconciliation, leaving
+                # some genuinely outstanding.
+                invoice = db.query(Invoice).filter_by(quotation_id=q.id).first()
+                if invoice and RNG.random() < 0.55:
+                    method = "razorpay" if RNG.random() < 0.6 else "bank_transfer"
+                    db.add(Payment(
+                        invoice_id=invoice.id, amount=invoice.amount, method=method,
+                        paid_at=days_ago(max(created_days_ago - RNG.randint(1, 10), 0)),
+                    ))
+                    invoice.status = "paid"
+
+                # A Subscription-category line on a confirmed/approved deal
+                # becomes a real recurring subscription (PDF A5/B7).
+                sub_line = next((l for l in q.lines if l.category == "Subscription"), None)
+                if sub_line and q.status in ("confirmed", "approved"):
+                    sub_amount = round(float(sub_line.unit_price) * sub_line.qty * (1 - float(sub_line.discount_pct) / 100), 2)
+                    is_cancelled = RNG.random() < 0.12
+                    sub = Subscription(
+                        customer_name=customer.name, plan=products_by_code[sub_line.product_id].name,
+                        cycle="Monthly", quotation_id=q.id, amount=sub_amount, qty=sub_line.qty,
+                        next_bill_date=None if is_cancelled else date.today() + timedelta(days=RNG.randint(3, 28)),
+                        status="cancelled" if is_cancelled else "active",
+                    )
+                    db.add(sub)
+                    db.flush()
+                    if is_cancelled:
+                        db.add(CreditNote(
+                            subscription_id=sub.id, amount=round(sub_amount * RNG.uniform(0.2, 0.6), 2),
+                            reason="Prorated refund on early cancellation",
+                            created_at=days_ago(max(created_days_ago - 2, 0)),
+                        ))
+
+        db.flush()
+
+        total_customers = db.query(Customer).count()
+        total_products = db.query(Product).count()
+        total_quotations = db.query(Quotation).count()
+        total_users = db.query(User).count()
+        total_warehouses = db.query(Warehouse).count()
+
         db.commit()
         print(
-            "Seed complete: 5 users, 2 warehouses, 3 discount tiers, 7 products "
-            "(+2 variants, 1 price list entry, 3 upsell rules), 2 subscription plans, "
-            "3 subscriptions (+1 cancelled w/ credit note), 5 customers (+2 portal users), "
-            "6 quotations across every status, 2 invoices (1 paid), 1 payment, "
-            "3 audit logs, 3 negotiation requests.\n"
+            f"Seed complete: {total_users} internal users, {total_warehouses} warehouses, "
+            f"3 discount tiers, {total_products} products, 5 subscription plans, "
+            f"{total_customers} customers, {total_quotations} quotations spanning every "
+            "status and risk band, generated via the real scoring/approval engine.\n"
             f"Test login password for every seeded user: {SEED_PASSWORD}\n"
             "All internal endpoints require Authorization: Bearer <token> from "
             "POST /auth/login; portal endpoints require a token from POST /portal/login."

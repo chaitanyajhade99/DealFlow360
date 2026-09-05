@@ -14,6 +14,14 @@ import Skeleton from "../components/Skeleton";
 import { useToast } from "../context/ToastContext";
 import { code, lineTotal, money } from "../utils";
 
+// A customer can request changes on anything that isn't a dead end
+// (rejected) -- this intentionally includes "confirmed": a quotation with no
+// risky discounts auto-confirms the moment a rep submits it (no internal
+// approval was needed), so excluding "confirmed" here would mean a clean
+// quote reaches the customer with no chance to ever negotiate it. The
+// backend itself has no status restriction on POST .../negotiate.
+const NEGOTIABLE_STATUSES = ["draft", "pending_approval", "negotiation", "approved", "confirmed"];
+
 export default function PortalNegotiation() {
   const { quotationId } = useParams();
   const navigate = useNavigate();
@@ -33,7 +41,7 @@ export default function PortalNegotiation() {
 
   const activeId =
     quotationId ||
-    allQuotations.find((q) => ["draft", "pending_approval", "negotiation", "approved"].includes(q.status))?.id ||
+    allQuotations.find((q) => NEGOTIABLE_STATUSES.includes(q.status))?.id ||
     allQuotations[0]?.id;
 
   useEffect(() => {
@@ -69,7 +77,7 @@ export default function PortalNegotiation() {
 
   const { quotation, lines } = data;
   const total = lines.reduce((s, l) => s + lineTotal(l), 0);
-  const isNegotiable = ["draft", "pending_approval", "negotiation", "approved"].includes(quotation.status);
+  const isNegotiable = NEGOTIABLE_STATUSES.includes(quotation.status);
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -133,7 +141,9 @@ export default function PortalNegotiation() {
         isNegotiable
           ? [
               { label: submitting ? "Sending..." : "Submit Request", onClick: handleSubmit },
-              { label: confirming ? "Confirming..." : "Confirm Quotation", primary: true, onClick: handleConfirm },
+              ...(quotation.status === "confirmed"
+                ? []
+                : [{ label: confirming ? "Confirming..." : "Confirm Quotation", primary: true, onClick: handleConfirm }]),
             ]
           : []
       }

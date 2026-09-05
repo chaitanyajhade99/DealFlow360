@@ -205,6 +205,14 @@ class PortalTokenOut(BaseModel):
     customer_id: int
 
 
+class PortalSignupOut(BaseModel):
+    status: str  # "pending" (new/unapproved company) | "approved" (logged in immediately)
+    customer_user_id: int
+    customer_id: int
+    access_token: Optional[str] = None
+    token_type: str = "bearer"
+
+
 class PortalMagicLinkIn(BaseModel):
     email: str
 
@@ -226,12 +234,23 @@ class CustomerSignupIn(BaseModel):
     # instead of self-selecting one at signup.
 
 
+class CustomerIn(BaseModel):
+    name: str
+    # No tier field -- every customer starts Bronze and earns its way up
+    # (see api.tiering), whether created here or via portal self-signup.
+
+
 class CustomerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
     default_tier: str
+    status: str = "approved"
     created_at: datetime
+
+
+class CustomerApprovalActionIn(BaseModel):
+    note: Optional[str] = None
 
 
 class CustomerUserOut(BaseModel):
@@ -299,7 +318,7 @@ class ProductVariantOut(ProductVariantIn):
 
 class PriceListIn(BaseModel):
     customer_tier: str
-    currency: str = "USD"
+    currency: str = "INR"
     price_rule: dict[str, Any] = {}
 
 

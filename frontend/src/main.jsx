@@ -18,6 +18,7 @@ import FulfillmentDetail from "./screens/FulfillmentDetail";
 import SubscriptionsList from "./screens/SubscriptionsList";
 import BillingDetail from "./screens/BillingDetail";
 import PortalNegotiation from "./screens/PortalNegotiation";
+import PortalInvoices from "./screens/PortalInvoices";
 import InvoicesList from "./screens/InvoicesList";
 import InvoiceDetail from "./screens/InvoiceDetail";
 import DealHealth from "./screens/DealHealth";
@@ -30,6 +31,7 @@ import AdminReporting from "./screens/admin/AdminReporting";
 import AdminWarehouses from "./screens/admin/AdminWarehouses";
 import AdminSubscriptionPlans from "./screens/admin/AdminSubscriptionPlans";
 import AdminUsers from "./screens/admin/AdminUsers";
+import AdminCustomers from "./screens/admin/AdminCustomers";
 import Signup from "./screens/Signup";
 
 function App() {
@@ -104,12 +106,21 @@ function App() {
               </AdminRouteGuard>
             }
           />
+          <Route
+            path="admin/customers"
+            element={
+              <AdminRouteGuard>
+                <AdminCustomers />
+              </AdminRouteGuard>
+            }
+          />
         </Route>
 
         {/* Customer Portal Standalone Routes */}
         <Route path="/portal" element={<PortalRouteGuard />}>
           <Route index element={<PortalNegotiation />} />
           <Route path=":quotationId" element={<PortalNegotiation />} />
+          <Route path="billing" element={<PortalInvoices />} />
           <Route path="messages" element={<PortalMessages />} />
           <Route path="profile" element={<PortalProfile />} />
         </Route>

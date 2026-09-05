@@ -100,10 +100,11 @@ DealFlow360/
 - Two independent sessions can be open in the same browser at once (separate `localStorage` keys) — useful for testing the internal console and the customer portal side by side.
 
 ### 4.2 Quotation management
-- Full CRUD: create, list, fetch, edit line items (`PATCH .../lines`, logged to `AuditLog` with reason), submit for scoring.
+- Full CRUD: create, list, fetch, edit line items (`PATCH .../lines`, logged to `AuditLog` with reason), submit for scoring. Both create and edit reject a quotation left with zero valid line items (400) — an empty quotation can never be saved.
+- **Customer picked from an existing directory, never typed** — the "New Quotation" screen selects from `GET /customers` instead of free-text name/tier entry; tier rides along automatically (read-only) from the selected customer's earned tier (see §4.7). A small "add new customer" affordance (name only, starts Bronze) covers onboarding a brand-new org.
 - **Live discount guardrails** in the line editor — a line over its category limit turns red in real time before it's even submitted.
 - **Live margin indicator** per line and per quotation, computed from `Product.cost`.
-- **Upsell / cross-sell suggestions** on the quote builder, powered by an Apriori-mined co-occurrence engine ranked by expected margin (not just popularity).
+- **Upsell / cross-sell suggestions** on the quote builder — real ranking, not degraded: the endpoint computes each suggestion's actual margin (price − cost) and its real historical co-purchase count from live `QuotationLine` data, so `ranking_basis` genuinely reflects `count_x_margin`/`confidence_x_margin` instead of silently falling back to a likelihood-only order.
 - **Quotation PDF export** (`GET /quotations/{id}/pdf`) — a real, generated-on-demand PDF (reportlab) with line items, discounts, and totals. Not cached — always reflects live data.
 
 ### 4.3 Risk scoring & multi-stage approval
@@ -124,9 +125,10 @@ DealFlow360/
 - **Real cancellation refunds**, computed the same way when not explicitly overridden.
 
 ### 4.6 Invoicing & payments
+- All amounts across the app are in **Indian Rupees (₹ / INR)** — the money formatter, the quotation PDF, and Razorpay's own charge currency are all consistently INR.
 - Auto-generated invoices the moment a quotation is fully confirmed (whether that took zero, one, or two approval steps).
-- **Real Razorpay Checkout integration** (test mode) — `POST /invoices/{id}/razorpay-order` creates a server-side order (amount can't be tampered with client-side); `POST /invoices/{id}/razorpay-verify` verifies the HMAC-SHA256 signature server-side before ever marking an invoice paid. A forged/incorrect signature is rejected — an invoice cannot be marked paid without a genuinine, verified transaction.
-- **Manual/offline reconciliation** kept as a clearly-separated, confirmation-gated Finance action (bank reference required) — not a one-click shortcut, so it can't be confused with or substituted for a real payment.
+- **Real Razorpay Checkout integration** (test mode) — **the customer pays their own invoice, from the portal, not internal staff.** `POST /portal/invoices/{id}/razorpay-order` creates a server-side order (amount can't be tampered with client-side, ownership-checked so a customer can only pay their own invoice); `POST /portal/invoices/{id}/razorpay-verify` verifies the HMAC-SHA256 signature server-side before ever marking an invoice paid. A forged/incorrect signature is rejected — an invoice cannot be marked paid without a genuine, verified transaction. The internal Invoice Detail screen is view-only for this reason.
+- **Manual/offline reconciliation** kept on the internal side as a clearly-separated, confirmation-gated Finance action (bank reference required) — for a payment that genuinely happened outside the platform, never a substitute for the real Razorpay path.
 
 ### 4.7 Customer tiering (earned, not chosen)
 - A new customer organization always starts at **Bronze** — tier is never self-selected at signup.
@@ -138,17 +140,19 @@ DealFlow360/
 
 ### 4.9 Customer portal (separate, restricted app)
 - Own login, own routes (`/portal/*`), own route guard — structurally isolated from the internal console (a customer JWT is rejected by every internal endpoint and vice versa).
+- **Sign-up requires Admin approval**: a brand-new company starts `Customer.status="pending"` and gets no usable session — an Admin must approve it (Admin → Customer Approvals) before it can log in or even appear in the internal quotation builder's customer picker. Signing up as an additional contact for an *already-approved* company skips the wait.
 - View your own quotations only — **ownership-enforced server-side** (a real security gap found and fixed: a customer token used to be able to read/negotiate on *any* quotation by guessing its id; now 404s unless `Quotation.customer_name` matches the caller's own account).
 - **Negotiate**: counter a line's discount with a message.
 - **Confirm Quotation**: applies the latest counter-discount, re-scores it, and — if the final terms breach policy — automatically re-enters the same internal approval pipeline used for reps' own quotes. No separate "customer approval" code path to keep in sync.
 - **Messages** — every negotiation request across the account's quotations, and a **Profile** page with real account details.
 
 ### 4.10 Admin console
-- **Products & Pricing** — full catalogue CRUD, including variants and per-tier price lists.
+- **Products & Pricing** — full catalogue CRUD (create *and* edit) with variants and per-tier price lists preserved across edits.
 - **Discount Tiers & Approval Chains** — per-tier, per-category discount ceilings and the risk→stage routing table (PDF A3).
 - **Warehouses** — stock levels, shipping costs, replenishment rules.
 - **Subscription Plans** — billing cycle, proration, and cancellation rules.
 - **User Approvals** — approve/reject pending internal sign-ups (see §4.1).
+- **Customer Approvals** — approve/reject pending customer sign-ups; a company only appears in the quotation builder's customer picker (and can only log into the portal) once approved.
 - **Reporting** — filterable (date range, approval status, category) KPIs and a live per-category revenue breakdown, all derived from real quotation data — no fabricated chart data.
 
 ### 4.11 Dashboard
@@ -204,10 +208,18 @@ Open the printed URL (typically `http://localhost:5173`).
 | Portal | `procurement@acme.example` | `password123` | Acme Corp (Gold) |
 | Portal | `ops@globex.example` | `password123` | Globex Manufacturing (Gold) |
 
-Seed data spans every quotation lifecycle status (draft, pending approval,
-negotiation, approved, confirmed, rejected), a paid invoice, an active and a
-cancelled subscription (with a credit note), and real audit history — the app
-looks populated on first login, not empty.
+Seed data is a large, Indian-market-focused dataset generated through the
+real scoring/approval/invoicing engine (not hand-picked): **~90 products**
+across Hardware/Services/Subscription, **~85 customer organizations** (Indian
+company names, cities, sectors) plus the 5 named demo accounts above, **~90
+quotations** spanning every lifecycle status and risk band, **~15 internal
+staff**, **10 warehouses** across major Indian cities, dozens of invoices
+(a genuine mix of paid/unpaid, Razorpay/manual payment methods),
+subscriptions, credit notes, negotiation requests, and audit history — plus a
+handful of internal users and customer organizations deliberately left
+**pending Admin approval** so the approval-queue screens have real data to
+show on first login, not an empty state. Regenerate any time with a fresh
+`python -m seed.seed` against an empty database.
 
 ### 5.4 Backend-only demo script
 
@@ -224,16 +236,17 @@ python demo/run_demo.py
 ## 6. End-to-end flow to click through
 
 1. **Login** as J. Rao (Sales Rep) → Dashboard shows real counts + activity.
-2. **Quotations → New Quotation** → add a line discounted above its category limit → **Submit for Approval** → routes to Sales Manager (HIGH risk).
+2. **Quotations → New Quotation** → pick a customer from the dropdown (tier auto-fills, read-only) → add a line discounted above its category limit → **Submit for Approval** → routes to Sales Manager (HIGH risk).
 3. **Log out, log in as M. Shah** (Sales Manager) → **Approvals** → open it → see the real flagged-line breakdown → **Approve** with a note → escalates to Finance (or confirms outright for MEDIUM/LOW).
 4. **Log in as K. Iyer** (Finance) → approve the same item → quotation confirms, invoice auto-generates.
-5. **Invoices** → open the new invoice → **Pay with Razorpay** (test card) → invoice flips to paid only after signature verification succeeds.
+5. **Invoices** → open the new invoice (view-only from the internal side; note the banner explaining payment happens on the customer's side).
 6. **Fulfillment** → see the real warehouse split and shipping cost.
 7. **Subscriptions** → modify an active subscription's amount → see the real prorated charge/credit; **Cancel** another → see the real refund + credit note.
 8. **Deal Health** → **Nudge** / **Escalate** an alert → confirm it appears in Dashboard activity.
 9. **Log out, sign up a new customer** at `/signup` (Customer Portal tab, no tier field) → note the account starts Bronze.
 10. **Portal**: negotiate a counter-discount on a quote → **Confirm Quotation** → watch it either confirm outright or re-enter the internal approval queue.
-11. **Admin** (`admin@dealflow360.example`): approve a pending internal sign-up, edit a discount tier, add a warehouse, add a subscription plan.
+11. **Portal → Billing**: pay an outstanding invoice with a Razorpay test card — this is the only real payment path in the app.
+12. **Admin** (`admin@dealflow360.example`): approve a pending internal sign-up, edit a discount tier, add a warehouse, add a subscription plan, add or edit a product in the catalog.
 
 ---
 

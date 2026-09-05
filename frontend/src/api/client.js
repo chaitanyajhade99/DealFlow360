@@ -140,9 +140,15 @@ export async function signupPortal({ companyName, email, password }) {
     { company_name: companyName, email, password },
     { auth: null }
   );
-  setCustomerSession({ token: data.access_token, customerId: data.customer_id, customerUserId: data.customer_user_id });
-  const profile = await get("/portal/me", { auth: "customer" }).catch(() => null);
-  setCustomerSession({ token: data.access_token, customerId: data.customer_id, customerUserId: data.customer_user_id, profile });
+  // A brand-new company starts "pending" -- no access_token is issued until
+  // an Admin approves it (see backend/api/portal.py::portal_signup). Only
+  // stash a session when one actually came back (an already-approved
+  // company's second contact logs straight in).
+  if (data.access_token) {
+    setCustomerSession({ token: data.access_token, customerId: data.customer_id, customerUserId: data.customer_user_id });
+    const profile = await get("/portal/me", { auth: "customer" }).catch(() => null);
+    setCustomerSession({ token: data.access_token, customerId: data.customer_id, customerUserId: data.customer_user_id, profile });
+  }
   return data;
 }
 
@@ -157,9 +163,31 @@ export async function rejectUser(id) {
   return post(`/admin/users/${id}/reject`, {});
 }
 
+// ---- Admin: customer approval ----
+export async function getAdminCustomers(status) {
+  return get(`/admin/customers${qs({ status })}`);
+}
+export async function approveCustomer(id) {
+  return post(`/admin/customers/${id}/approve`, {});
+}
+export async function rejectCustomer(id) {
+  return post(`/admin/customers/${id}/reject`, {});
+}
+
 // ---- Dashboard ----
 export async function getDashboardSummary(activityLimit = 10) {
   return get(`/dashboard/summary${qs({ activity_limit: activityLimit })}`);
+}
+
+// ---- Customers ----
+// GET /customers defaults to approved-only server-side -- a pending
+// self-signup company won't appear in the quotation builder's picker until
+// an Admin approves it.
+export async function getCustomers() {
+  return get("/customers");
+}
+export async function createCustomer(payload) {
+  return post("/customers", payload);
 }
 
 // ---- Quotations ----
@@ -274,12 +302,6 @@ export async function createInvoice(payload) {
 export async function payInvoice(id, payload) {
   return post(`/invoices/${id}/pay`, payload);
 }
-export async function createRazorpayOrder(id) {
-  return post(`/invoices/${id}/razorpay-order`, {});
-}
-export async function verifyRazorpayPayment(id, payload) {
-  return post(`/invoices/${id}/razorpay-verify`, payload);
-}
 
 // ---- Deal health ----
 export async function getDealHealth() {
@@ -338,6 +360,20 @@ export async function confirmPortalQuotation(quotationId) {
 }
 export async function getPortalNegotiations() {
   return get("/portal/negotiations", { auth: "customer" });
+}
+export async function getPortalInvoices() {
+  return get("/portal/invoices", { auth: "customer" });
+}
+export async function getPortalInvoiceDetail(id) {
+  const invoice = await get(`/portal/invoices/${id}`, { auth: "customer" });
+  const quotation = await get(`/portal/quotations/${invoice.quotation_id}`, { auth: "customer" });
+  return { invoice, quotation, lines: quotation.lines || [] };
+}
+export async function createPortalRazorpayOrder(invoiceId) {
+  return post(`/portal/invoices/${invoiceId}/razorpay-order`, {}, { auth: "customer" });
+}
+export async function verifyPortalRazorpayPayment(invoiceId, payload) {
+  return post(`/portal/invoices/${invoiceId}/razorpay-verify`, payload, { auth: "customer" });
 }
 
 export { ApiError };

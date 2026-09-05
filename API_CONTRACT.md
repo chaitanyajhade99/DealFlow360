@@ -87,7 +87,24 @@
          /invoices/{id}/razorpay-verify add a real Razorpay Checkout (test
          mode) payment path alongside the existing manual POST
          /invoices/{id}/pay; verify checks the HMAC-SHA256 signature
-         server-side before marking the invoice paid. -->
+         server-side before marking the invoice paid.
+
+     Business-logic pass, 2026-09-06:
+       - Currency switched from USD to INR everywhere (display formatting,
+         PriceList.currency default, the quotation PDF's amounts).
+       - New GET/POST /customers -- the quotation builder now picks an
+         existing customer from this list instead of a Sales Rep typing a
+         free-text name/tier; tier always rides along from the selected
+         Customer.default_tier and is never manually entered (see
+         api.tiering -- it's earned from closed order volume, same rule as
+         portal signups).
+       - Razorpay moved from /invoices/* (internal) to /portal/invoices/*
+         (customer-only, ownership-checked): the internal workspace no
+         longer has any route that can trigger or complete a real payment.
+         POST /invoices/{id}/razorpay-order and /razorpay-verify are
+         REMOVED; POST /invoices/{id}/pay remains, but is now documented as
+         Finance's manual/offline-reconciliation path only -- the customer
+         is the only party who can pay an invoice through a real gateway. -->
 
 ### Quotations
 POST /quotations                      -> sales_rep_id and expected_delivery_date optional
@@ -100,7 +117,16 @@ PATCH /quotations/{id}/lines          -> category_limit_pct optional (auto-fille
 POST /quotations/{id}/submit          -> calls engines.score_risk() with context (see below);
                                           result["reason"] appended into Approval.history;
                                           auto-creates an Invoice if no approval was needed
-GET /quotations/{id}/upsell-suggestions -> calls engines.recommend_upsell() (PDF B5)
+GET /quotations/{id}/upsell-suggestions -> calls engines.recommend_upsell() (PDF B5).
+                                          Fixed 2026-09-06: this route used to pass the
+                                          engine no real "margin" key (only an unused
+                                          min_margin_pct), so every call silently degraded
+                                          to a likelihood-only ranking (margin_delta/score
+                                          always 0). Now computes real margin (price - cost)
+                                          per suggestion and a real co_purchase_count from
+                                          actual historical QuotationLine co-occurrence, so
+                                          ranking_basis is genuinely "count_x_margin"/
+                                          "confidence_x_margin" instead of always degrading.
 GET /quotations/{id}/pdf              -> added 2026-09-05; streams a generated PDF
                                           (application/pdf) of the quotation's line items,
                                           discounts, and total -- built with reportlab,
@@ -114,6 +140,12 @@ GET /approvals/{id}                   -> added 2026-09-05; includes flagged_line
 POST /approvals/{id}/decision         -> approve/reject/return; auto-creates an Invoice
                                           when the chain fully clears; now also writes an
                                           AuditLog "approval" entry (added 2026-09-05)
+
+### Quotation integrity -- added 2026-09-06
+<!-- POST /quotations and PATCH /quotations/{id}/lines both now reject a
+     payload with zero lines carrying a non-empty product_id and qty > 0
+     (400 "A quotation needs at least one line item..."). Previously a
+     quotation (or an edit) with an empty cart silently persisted. -->
 
 ### Fulfillment
 GET /fulfillment/{quotation_id}       -> calls engines.split_warehouse()
@@ -130,16 +162,49 @@ POST /auth/login                      -> returns a JWT (type: "internal"); 403 i
 GET /admin/users                      -> ?status=pending|approved|rejected filter
 POST /admin/users/{id}/approve        -> sets status="approved"
 POST /admin/users/{id}/reject         -> sets status="rejected"
+GET /admin/customers                  -> added 2026-09-06; ?status=pending|approved|rejected
+                                          filter -- the Customer Approvals queue
+POST /admin/customers/{id}/approve    -> added 2026-09-06; sets Customer.status="approved" --
+                                          the company then appears in GET /customers (below)
+                                          and its portal users can log in
+POST /admin/customers/{id}/reject     -> added 2026-09-06; sets Customer.status="rejected"
+
+### Customers -- added 2026-09-06
+<!-- Any internal user (not admin-gated) -- a Sales Rep must be able to
+     onboard a brand-new company before quoting them. -->
+GET /customers                        -> list, ordered by name; backs the quotation
+                                          builder's customer picker (name + tier both
+                                          come from here, never typed free-text).
+                                          Defaults to ?status=approved -- a company
+                                          still pending Admin approval (see
+                                          /admin/customers above) never appears here,
+                                          which is what actually keeps it out of the
+                                          quotation builder until approved. Pass
+                                          ?status=all or a specific value to override.
+POST /customers                       -> {name} only; always starts default_tier="Bronze"
+                                          AND status="approved" -- an internal user is
+                                          vouching for it, unlike self-service portal
+                                          signup below, which starts "pending"
 
 ### Customer portal -- added 2026-09-05, PDF B8
 <!-- Restricted per section 7's Technical Guidelines: every route below except
      /portal/login and /portal/magic-link requires a customer-type JWT
      (Authorization: Bearer <token>), never an internal one. -->
-POST /portal/signup                   -> added 2026-09-05; self-service, no admin approval.
-                                          Reuses an existing Customer row matched by
-                                          company_name, or creates one -- so a rep's earlier
-                                          quotation against that name resolves to this account
-POST /portal/login
+POST /portal/signup                   -> added 2026-09-05; reuses an existing Customer row
+                                          matched by company_name, or creates one -- so a
+                                          rep's earlier quotation against that name resolves
+                                          to this account. Business-logic change 2026-09-06:
+                                          a brand-new company now starts Customer.status=
+                                          "pending" and this endpoint returns {status:
+                                          "pending", access_token: null} -- no usable token
+                                          until an Admin approves (see /admin/customers).
+                                          Signing up as an additional contact for an
+                                          already-"approved" company skips the wait and
+                                          returns {status: "approved", access_token: "..."}
+                                          immediately, since the org itself is already vetted.
+POST /portal/login                    -> 403 "awaiting admin approval"/"rejected" (added
+                                          2026-09-06) if the account's Customer.status isn't
+                                          "approved" -- mirrors internal /auth/login's gate
 POST /portal/magic-link               -> no email service wired up; returns the token
                                           directly instead of emailing it
 GET /portal/me                        -> added 2026-09-05, frontend-integration pass;
@@ -158,6 +223,17 @@ POST /portal/quotations/{id}/confirm  -> applies the latest pending counter_disc
                                           its line, then re-runs the same scoring path as
                                           POST /quotations/{id}/submit -- if final terms
                                           exceed thresholds it re-enters approval automatically
+GET /portal/invoices                  -> added 2026-09-06; every invoice raised against this
+                                          account's own quotations
+GET /portal/invoices/{id}             -> added 2026-09-06; ownership-checked like quotations
+POST /portal/invoices/{id}/razorpay-order   -> added 2026-09-06 (moved here from the
+                                          internal /invoices/* -- see business-logic pass
+                                          note above); creates a Razorpay order server-side
+POST /portal/invoices/{id}/razorpay-verify  -> added 2026-09-06; verifies the HMAC-SHA256
+                                          signature server-side, then marks the invoice paid.
+                                          This pair is now the ONLY way an invoice gets paid
+                                          through a real payment gateway -- the customer pays
+                                          their own invoice, the internal workspace cannot
 
 ### Subscriptions
 POST /subscriptions
@@ -186,16 +262,15 @@ GET /subscription-plans               -> added 2026-09-05
 POST /invoices                        -> added 2026-09-05, manual/admin creation
 GET /invoices
 GET /invoices/{id}                    -> added 2026-09-05
-POST /invoices/{id}/pay               -> added 2026-09-05; records a Payment, sets
-                                          Invoice.status to "paid" once fully covered
-POST /invoices/{id}/razorpay-order    -> added 2026-09-05; creates a Razorpay order
-                                          (TEST mode) server-side for invoice.amount in
-                                          paise, returns {order_id, amount, currency, key_id}
-                                          for the frontend to open Checkout with
-POST /invoices/{id}/razorpay-verify   -> added 2026-09-05; verifies Checkout's
-                                          HMAC-SHA256 signature server-side (never trusts the
-                                          client-side success callback alone), then records a
-                                          Payment (method="razorpay") and marks the invoice paid
+POST /invoices/{id}/pay               -> added 2026-09-05; Finance-only MANUAL/offline
+                                          reconciliation (e.g. an already-received bank
+                                          transfer) -- NOT a real payment gateway. Real
+                                          online payment moved to POST
+                                          /portal/invoices/{id}/razorpay-order|verify
+                                          (2026-09-06 business-logic pass): the customer pays
+                                          their own invoice through the portal; this endpoint
+                                          just lets Finance mark one paid when money genuinely
+                                          arrived some other way
 
 ### Deal health
 GET /deal-health                      -> calls engines.detect_anomalies(); now also returns

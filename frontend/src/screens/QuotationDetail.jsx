@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Sparkles, Plus, Trash2, ShieldAlert, ShieldCheck, TrendingUp } from "lucide-react";
+import { Sparkles, Plus, Trash2, ShieldAlert, ShieldCheck, TrendingUp, X, UserPlus } from "lucide-react";
 import {
   getQuotationDetail,
   updateQuotationLines,
@@ -9,6 +9,8 @@ import {
   getUpsellSuggestions,
   getProducts,
   downloadQuotationPdf,
+  getCustomers,
+  createCustomer,
 } from "../api/client";
 import DetailScreen from "../components/DetailScreen";
 import Panel from "../components/Panel";
@@ -18,7 +20,6 @@ import { useToast } from "../context/ToastContext";
 import { code, lineTotal, money, pct } from "../utils";
 
 const CATEGORIES = ["Hardware", "Services", "Subscription"];
-const TIERS = ["Bronze", "Silver", "Gold"];
 
 function emptyLine() {
   return { product_id: "", category: "Hardware", qty: 1, unit_price: 0, discount_pct: 0 };
@@ -33,12 +34,40 @@ export default function QuotationDetail() {
   const [data, setData] = useState({ quotation: null, lines: [] });
   const [products, setProducts] = useState([]);
   const [lines, setLines] = useState(isNew ? [emptyLine()] : []);
-  const [customerName, setCustomerName] = useState("");
-  const [customerTier, setCustomerTier] = useState("Gold");
+  const [customers, setCustomers] = useState([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [newCustomerOpen, setNewCustomerOpen] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [addingCustomer, setAddingCustomer] = useState(false);
   const [upsell, setUpsell] = useState([]);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const selectedCustomer = customers.find((c) => String(c.id) === String(selectedCustomerId));
+
+  const loadCustomers = () => getCustomers().then(setCustomers).catch(() => setCustomers([]));
+
+  const handleAddCustomer = async (e) => {
+    e.preventDefault();
+    if (!newCustomerName.trim()) {
+      toast("Enter a company name.", "warning");
+      return;
+    }
+    setAddingCustomer(true);
+    try {
+      const created = await createCustomer({ name: newCustomerName.trim() });
+      toast(`${created.name} added — starts at Bronze tier.`, "success");
+      setCustomers((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedCustomerId(String(created.id));
+      setNewCustomerOpen(false);
+      setNewCustomerName("");
+    } catch (err) {
+      toast(err.message || "Could not add customer.", "error");
+    } finally {
+      setAddingCustomer(false);
+    }
+  };
 
   const handleDownloadPdf = async () => {
     setDownloadingPdf(true);
@@ -53,7 +82,10 @@ export default function QuotationDetail() {
 
   useEffect(() => {
     getProducts().then(setProducts).catch(() => setProducts([]));
-    if (isNew) return;
+    if (isNew) {
+      loadCustomers();
+      return;
+    }
     getQuotationDetail(id).then((d) => {
       setData(d);
       setLines(d.lines.map((l) => ({ ...l })));
@@ -93,24 +125,27 @@ export default function QuotationDetail() {
   const removeLine = (idx) => setLines((prev) => prev.filter((_, i) => i !== idx));
 
   const handleSaveNew = async () => {
-    if (!customerName.trim()) {
-      toast("Enter a customer name first.", "warning");
+    if (!selectedCustomer) {
+      toast("Select a customer first.", "warning");
+      return;
+    }
+    const validLines = lines.filter((l) => l.product_id && Number(l.qty) > 0);
+    if (!validLines.length) {
+      toast("Add at least one product line before creating the quotation.", "warning");
       return;
     }
     setSaving(true);
     try {
       const payload = {
-        customer_name: customerName,
-        customer_tier: customerTier,
-        lines: lines
-          .filter((l) => l.product_id)
-          .map((l) => ({
-            product_id: l.product_id,
-            category: l.category,
-            qty: Number(l.qty),
-            unit_price: Number(l.unit_price),
-            discount_pct: Number(l.discount_pct || 0),
-          })),
+        customer_name: selectedCustomer.name,
+        customer_tier: selectedCustomer.default_tier,
+        lines: validLines.map((l) => ({
+          product_id: l.product_id,
+          category: l.category,
+          qty: Number(l.qty),
+          unit_price: Number(l.unit_price),
+          discount_pct: Number(l.discount_pct || 0),
+        })),
       };
       const created = await createQuotation(payload);
       toast(`Quotation ${code("Q", created.id)} created.`, "success");
@@ -123,10 +158,15 @@ export default function QuotationDetail() {
   };
 
   const handleSaveLines = async () => {
+    const validLines = lines.filter((l) => l.product_id && Number(l.qty) > 0);
+    if (!validLines.length) {
+      toast("A quotation needs at least one product line — add one before saving.", "warning");
+      return false;
+    }
     setSaving(true);
     try {
       const payload = {
-        lines: lines.map((l) => ({
+        lines: validLines.map((l) => ({
           product_id: l.product_id,
           category: l.category,
           qty: Number(l.qty),
@@ -139,8 +179,10 @@ export default function QuotationDetail() {
       setData({ quotation: updated, lines: updated.lines });
       setLines(updated.lines.map((l) => ({ ...l })));
       toast("Line changes saved.", "success");
+      return true;
     } catch (err) {
       toast(err.message || "Could not save changes.", "error");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -149,7 +191,8 @@ export default function QuotationDetail() {
   const handleSubmit = async () => {
     setSaving(true);
     try {
-      await handleSaveLines();
+      const saved = await handleSaveLines();
+      if (!saved) return;
       const approval = await submitQuotation(id);
       toast(
         approval.stage === "confirmed"
@@ -181,26 +224,72 @@ export default function QuotationDetail() {
         <Panel title="Customer">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="df-label">Customer Name</label>
-              <input
+              <label className="df-label">Customer</label>
+              <select
                 className="df-input text-xs"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="e.g. Acme Corp"
-              />
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+              >
+                <option value="">Select a customer…</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.default_tier})</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setNewCustomerOpen(true)}
+                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-brand-700 hover:underline"
+              >
+                <UserPlus className="h-3 w-3" /> New customer not listed here
+              </button>
             </div>
             <div>
               <label className="df-label">Customer Tier</label>
-              <select className="df-input text-xs" value={customerTier} onChange={(e) => setCustomerTier(e.target.value)}>
-                {TIERS.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              <div className="df-input text-xs bg-slate-50 text-slate-500 flex items-center cursor-not-allowed">
+                {selectedCustomer ? selectedCustomer.default_tier : "Select a customer first"}
+              </div>
+              <p className="mt-1 text-[10.5px] text-slate-400">
+                Tier is earned automatically from closed order volume — never set manually.
+              </p>
             </div>
           </div>
         </Panel>
 
         <LineEditor lines={lines} products={products} onUpdate={updateLine} onAdd={addLine} onRemove={removeLine} />
+
+        {newCustomerOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+            <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl border border-slate-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <h2 className="text-base font-bold text-slate-900">Add New Customer</h2>
+                <button onClick={() => setNewCustomerOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <form onSubmit={handleAddCustomer} className="space-y-3.5">
+                <div>
+                  <label className="df-label">Company Name *</label>
+                  <input
+                    required autoFocus className="df-input text-xs"
+                    value={newCustomerName}
+                    onChange={(e) => setNewCustomerName(e.target.value)}
+                    placeholder="e.g. Acme Corp"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  New customers always start at <b>Bronze</b> — tier rises automatically as their
+                  orders close.
+                </p>
+                <div className="mt-2 flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button type="button" onClick={() => setNewCustomerOpen(false)} className="df-btn-secondary">Cancel</button>
+                  <button type="submit" disabled={addingCustomer} className="df-btn-primary">
+                    {addingCustomer ? "Adding..." : "Add Customer"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </DetailScreen>
     );
   }

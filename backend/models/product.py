@@ -50,7 +50,7 @@ class PriceList(Base):
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     customer_tier = Column(String, nullable=False)  # Bronze / Silver / Gold
-    currency = Column(String, nullable=False, default="USD")
+    currency = Column(String, nullable=False, default="INR")
     price_rule = Column(JSON, nullable=False, default=dict)  # e.g. {"type": "fixed", "price": 1080} or {"type": "markup_pct", "value": 10}
 
     product = relationship("Product", back_populates="price_list_entries")

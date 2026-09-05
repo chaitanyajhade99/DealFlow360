@@ -161,6 +161,12 @@ def score_and_route(db: Session, quotation: Quotation) -> Approval:
 
 @router.post("/quotations", response_model=QuotationOut)
 def create_quotation(payload: QuotationCreate, db: Session = Depends(get_db)):
+    # A quotation with no real line items isn't a quotation -- reject it here
+    # so an empty one can never land in the database, whatever client sent it.
+    valid_lines = [l for l in payload.lines if l.product_id and l.product_id.strip() and l.qty > 0]
+    if not valid_lines:
+        raise HTTPException(status_code=400, detail="A quotation needs at least one line item with a product and quantity.")
+
     quotation = Quotation(
         customer_name=payload.customer_name,
         customer_tier=payload.customer_tier,
@@ -171,7 +177,7 @@ def create_quotation(payload: QuotationCreate, db: Session = Depends(get_db)):
     db.add(quotation)
     db.flush()
 
-    for line in payload.lines:
+    for line in valid_lines:
         db.add(_build_line(db, quotation.id, payload.customer_tier, line))
 
     db.commit()
@@ -208,19 +214,23 @@ def update_quotation_lines(
     if not quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
 
+    valid_lines = [l for l in payload.lines if l.product_id and l.product_id.strip() and l.qty > 0]
+    if not valid_lines:
+        raise HTTPException(status_code=400, detail="A quotation needs at least one line item with a product and quantity.")
+
     before = [
         {"product_id": l.product_id, "qty": l.qty, "discount_pct": float(l.discount_pct)}
         for l in quotation.lines
     ]
 
     db.query(QuotationLine).filter(QuotationLine.quotation_id == id).delete()
-    for line in payload.lines:
+    for line in valid_lines:
         db.add(_build_line(db, id, quotation.customer_tier, line))
 
     db.add(AuditLog(
         entity_type="quotation", entity_id=id, user_id=payload.edited_by_user_id,
         action="edit", reason=payload.reason,
-        before={"lines": before}, after={"lines": [l.model_dump() for l in payload.lines]},
+        before={"lines": before}, after={"lines": [l.model_dump() for l in valid_lines]},
     ))
 
     db.commit()
@@ -234,7 +244,9 @@ def update_quotation_lines(
 def quotation_pdf(id: int, db: Session = Depends(get_db)):
     """PDF export of a quotation (PDF: quotations must be shareable outside
     the console). Built with reportlab so no external service/binary is
-    needed -- generated on the fly from live data, never cached.
+    needed -- generated on the fly from live data, never cached. Amounts are
+    formatted "Rs. " (not the currency symbol) since reportlab's base
+    Helvetica font has no glyph for U+20B9.
     """
     quotation = db.get(Quotation, id)
     if not quotation:
@@ -268,9 +280,9 @@ def quotation_pdf(id: int, db: Session = Depends(get_db)):
         grand_total += line_total
         rows.append([
             line.product_name or line.product_id, line.category, str(line.qty),
-            f"${float(line.unit_price):,.2f}", f"{float(line.discount_pct):.1f}%", f"${line_total:,.2f}",
+            f"Rs. {float(line.unit_price):,.2f}", f"{float(line.discount_pct):.1f}%", f"Rs. {line_total:,.2f}",
         ])
-    rows.append(["", "", "", "", "Total", f"${grand_total:,.2f}"])
+    rows.append(["", "", "", "", "Total", f"Rs. {grand_total:,.2f}"])
 
     table = Table(rows, colWidths=[45 * mm, 28 * mm, 15 * mm, 28 * mm, 22 * mm, 28 * mm])
     table.setStyle(TableStyle([
