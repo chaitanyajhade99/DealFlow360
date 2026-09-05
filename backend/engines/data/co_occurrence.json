@@ -1,0 +1,591 @@
+{
+  "RACK-01": [
+    {
+      "product_id": "SERVER-01",
+      "product_name": "Rack Server",
+      "co_purchase_count": 446,
+      "margin": 900.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.148667,
+      "confidence": 0.923395,
+      "lift": 3.805201
+    },
+    {
+      "product_id": "INSTALL-01",
+      "product_name": "On-site Installation",
+      "co_purchase_count": 261,
+      "margin": 120.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.087,
+      "confidence": 0.540373,
+      "lift": 3.709652
+    },
+    {
+      "product_id": "CLOUD-01",
+      "product_name": "Cloud Backup 1TB",
+      "co_purchase_count": 138,
+      "margin": 60.0,
+      "is_promoted": true,
+      "promo_tag": "Attach Rate Drive",
+      "support": 0.046,
+      "confidence": 0.285714,
+      "lift": 3.139717
+    },
+    {
+      "product_id": "SUPPORT-01",
+      "product_name": "Premium Support",
+      "co_purchase_count": 230,
+      "margin": 520.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.076667,
+      "confidence": 0.47619,
+      "lift": 2.602134
+    }
+  ],
+  "SERVER-01": [
+    {
+      "product_id": "RACK-01",
+      "product_name": "Server Rack 42U",
+      "co_purchase_count": 446,
+      "margin": 210.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.148667,
+      "confidence": 0.612637,
+      "lift": 3.805201
+    },
+    {
+      "product_id": "INSTALL-01",
+      "product_name": "On-site Installation",
+      "co_purchase_count": 400,
+      "margin": 120.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.133333,
+      "confidence": 0.549451,
+      "lift": 3.771972
+    },
+    {
+      "product_id": "CLOUD-01",
+      "product_name": "Cloud Backup 1TB",
+      "co_purchase_count": 234,
+      "margin": 60.0,
+      "is_promoted": true,
+      "promo_tag": "Attach Rate Drive",
+      "support": 0.078,
+      "confidence": 0.321429,
+      "lift": 3.532182
+    },
+    {
+      "product_id": "SUPPORT-01",
+      "product_name": "Premium Support",
+      "co_purchase_count": 343,
+      "margin": 520.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.114333,
+      "confidence": 0.471154,
+      "lift": 2.574611
+    }
+  ],
+  "INSTALL-01": [
+    {
+      "product_id": "SERVER-01",
+      "product_name": "Rack Server",
+      "co_purchase_count": 400,
+      "margin": 900.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.133333,
+      "confidence": 0.915332,
+      "lift": 3.771972
+    },
+    {
+      "product_id": "RACK-01",
+      "product_name": "Server Rack 42U",
+      "co_purchase_count": 261,
+      "margin": 210.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.087,
+      "confidence": 0.597254,
+      "lift": 3.709652
+    },
+    {
+      "product_id": "CLOUD-01",
+      "product_name": "Cloud Backup 1TB",
+      "co_purchase_count": 132,
+      "margin": 60.0,
+      "is_promoted": true,
+      "promo_tag": "Attach Rate Drive",
+      "support": 0.044,
+      "confidence": 0.302059,
+      "lift": 3.319335
+    },
+    {
+      "product_id": "SUPPORT-01",
+      "product_name": "Premium Support",
+      "co_purchase_count": 194,
+      "margin": 520.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.064667,
+      "confidence": 0.443936,
+      "lift": 2.425879
+    }
+  ],
+  "MOUSE-01": [
+    {
+      "product_id": "LAPTOP-01",
+      "product_name": "Business Laptop 14\"",
+      "co_purchase_count": 489,
+      "margin": 180.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.163,
+      "confidence": 0.93858,
+      "lift": 3.70492
+    },
+    {
+      "product_id": "WARRANTY-01",
+      "product_name": "3yr Extended Warranty",
+      "co_purchase_count": 248,
+      "margin": 85.0,
+      "is_promoted": true,
+      "promo_tag": "Q1 Bundle",
+      "support": 0.082667,
+      "confidence": 0.476008,
+      "lift": 2.25953
+    },
+    {
+      "product_id": "DOCK-01",
+      "product_name": "Docking Station",
+      "co_purchase_count": 300,
+      "margin": 50.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.1,
+      "confidence": 0.575816,
+      "lift": 1.744896
+    },
+    {
+      "product_id": "CABLE-01",
+      "product_name": "USB-C Cable 2m",
+      "co_purchase_count": 169,
+      "margin": 3.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.056333,
+      "confidence": 0.324376,
+      "lift": 1.569562
+    }
+  ],
+  "LAPTOP-01": [
+    {
+      "product_id": "MOUSE-01",
+      "product_name": "Wireless Mouse",
+      "co_purchase_count": 489,
+      "margin": 5.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.163,
+      "confidence": 0.643421,
+      "lift": 3.70492
+    },
+    {
+      "product_id": "WARRANTY-01",
+      "product_name": "3yr Extended Warranty",
+      "co_purchase_count": 341,
+      "margin": 85.0,
+      "is_promoted": true,
+      "promo_tag": "Q1 Bundle",
+      "support": 0.113667,
+      "confidence": 0.448684,
+      "lift": 2.12983
+    },
+    {
+      "product_id": "DOCK-01",
+      "product_name": "Docking Station",
+      "co_purchase_count": 454,
+      "margin": 50.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.151333,
+      "confidence": 0.597368,
+      "lift": 1.810207
+    },
+    {
+      "product_id": "CABLE-01",
+      "product_name": "USB-C Cable 2m",
+      "co_purchase_count": 248,
+      "margin": 3.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.082667,
+      "confidence": 0.326316,
+      "lift": 1.578947
+    }
+  ],
+  "CLOUD-01": [
+    {
+      "product_id": "SERVER-01",
+      "product_name": "Rack Server",
+      "co_purchase_count": 234,
+      "margin": 900.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.078,
+      "confidence": 0.857143,
+      "lift": 3.532182
+    },
+    {
+      "product_id": "INSTALL-01",
+      "product_name": "On-site Installation",
+      "co_purchase_count": 132,
+      "margin": 120.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.044,
+      "confidence": 0.483516,
+      "lift": 3.319335
+    },
+    {
+      "product_id": "RACK-01",
+      "product_name": "Server Rack 42U",
+      "co_purchase_count": 138,
+      "margin": 210.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.046,
+      "confidence": 0.505495,
+      "lift": 3.139717
+    },
+    {
+      "product_id": "SUPPORT-01",
+      "product_name": "Premium Support",
+      "co_purchase_count": 121,
+      "margin": 520.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.040333,
+      "confidence": 0.443223,
+      "lift": 2.421986
+    }
+  ],
+  "SUPPORT-01": [
+    {
+      "product_id": "RACK-01",
+      "product_name": "Server Rack 42U",
+      "co_purchase_count": 230,
+      "margin": 210.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.076667,
+      "confidence": 0.418944,
+      "lift": 2.602134
+    },
+    {
+      "product_id": "SERVER-01",
+      "product_name": "Rack Server",
+      "co_purchase_count": 343,
+      "margin": 900.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.114333,
+      "confidence": 0.624772,
+      "lift": 2.574611
+    },
+    {
+      "product_id": "INSTALL-01",
+      "product_name": "On-site Installation",
+      "co_purchase_count": 194,
+      "margin": 120.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.064667,
+      "confidence": 0.35337,
+      "lift": 2.425879
+    },
+    {
+      "product_id": "SETUP-01",
+      "product_name": "Setup Service",
+      "co_purchase_count": 214,
+      "margin": 160.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.071333,
+      "confidence": 0.3898,
+      "lift": 1.356611
+    }
+  ],
+  "WARRANTY-01": [
+    {
+      "product_id": "MOUSE-01",
+      "product_name": "Wireless Mouse",
+      "co_purchase_count": 248,
+      "margin": 5.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.082667,
+      "confidence": 0.392405,
+      "lift": 2.25953
+    },
+    {
+      "product_id": "LAPTOP-01",
+      "product_name": "Business Laptop 14\"",
+      "co_purchase_count": 341,
+      "margin": 180.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.113667,
+      "confidence": 0.539557,
+      "lift": 2.12983
+    },
+    {
+      "product_id": "LAPTOP-02",
+      "product_name": "Workstation Laptop",
+      "co_purchase_count": 300,
+      "margin": 290.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.1,
+      "confidence": 0.474684,
+      "lift": 2.115974
+    },
+    {
+      "product_id": "DOCK-01",
+      "product_name": "Docking Station",
+      "co_purchase_count": 368,
+      "margin": 50.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.122667,
+      "confidence": 0.582278,
+      "lift": 1.76448
+    }
+  ],
+  "TRAINING-01": [
+    {
+      "product_id": "SETUP-01",
+      "product_name": "Setup Service",
+      "co_purchase_count": 246,
+      "margin": 160.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.082,
+      "confidence": 0.627551,
+      "lift": 2.184052
+    },
+    {
+      "product_id": "LAPTOP-02",
+      "product_name": "Workstation Laptop",
+      "co_purchase_count": 136,
+      "margin": 290.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.045333,
+      "confidence": 0.346939,
+      "lift": 1.546532
+    }
+  ],
+  "SETUP-01": [
+    {
+      "product_id": "TRAINING-01",
+      "product_name": "User Training Day",
+      "co_purchase_count": 246,
+      "margin": 95.0,
+      "is_promoted": true,
+      "promo_tag": "Enablement Push",
+      "support": 0.082,
+      "confidence": 0.285383,
+      "lift": 2.184052
+    }
+  ],
+  "LAPTOP-02": [
+    {
+      "product_id": "WARRANTY-01",
+      "product_name": "3yr Extended Warranty",
+      "co_purchase_count": 300,
+      "margin": 85.0,
+      "is_promoted": true,
+      "promo_tag": "Q1 Bundle",
+      "support": 0.1,
+      "confidence": 0.445765,
+      "lift": 2.115974
+    },
+    {
+      "product_id": "DOCK-01",
+      "product_name": "Docking Station",
+      "co_purchase_count": 394,
+      "margin": 50.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.131333,
+      "confidence": 0.585438,
+      "lift": 1.774056
+    },
+    {
+      "product_id": "MONITOR-01",
+      "product_name": "27\" 4K Monitor",
+      "co_purchase_count": 274,
+      "margin": 70.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.091333,
+      "confidence": 0.407132,
+      "lift": 1.234982
+    }
+  ],
+  "CABLE-01": [
+    {
+      "product_id": "MONITOR-01",
+      "product_name": "27\" 4K Monitor",
+      "co_purchase_count": 405,
+      "margin": 70.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.135,
+      "confidence": 0.653226,
+      "lift": 1.981474
+    },
+    {
+      "product_id": "LAPTOP-01",
+      "product_name": "Business Laptop 14\"",
+      "co_purchase_count": 248,
+      "margin": 180.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.082667,
+      "confidence": 0.4,
+      "lift": 1.578947
+    },
+    {
+      "product_id": "MOUSE-01",
+      "product_name": "Wireless Mouse",
+      "co_purchase_count": 169,
+      "margin": 5.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.056333,
+      "confidence": 0.272581,
+      "lift": 1.569562
+    },
+    {
+      "product_id": "DOCK-01",
+      "product_name": "Docking Station",
+      "co_purchase_count": 260,
+      "margin": 50.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.086667,
+      "confidence": 0.419355,
+      "lift": 1.270772
+    }
+  ],
+  "MONITOR-01": [
+    {
+      "product_id": "CABLE-01",
+      "product_name": "USB-C Cable 2m",
+      "co_purchase_count": 405,
+      "margin": 3.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.135,
+      "confidence": 0.409505,
+      "lift": 1.981474
+    },
+    {
+      "product_id": "LAPTOP-02",
+      "product_name": "Workstation Laptop",
+      "co_purchase_count": 274,
+      "margin": 290.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.091333,
+      "confidence": 0.277048,
+      "lift": 1.234982
+    },
+    {
+      "product_id": "DOCK-01",
+      "product_name": "Docking Station",
+      "co_purchase_count": 403,
+      "margin": 50.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.134333,
+      "confidence": 0.407482,
+      "lift": 1.234795
+    }
+  ],
+  "DOCK-01": [
+    {
+      "product_id": "LAPTOP-01",
+      "product_name": "Business Laptop 14\"",
+      "co_purchase_count": 454,
+      "margin": 180.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.151333,
+      "confidence": 0.458586,
+      "lift": 1.810207
+    },
+    {
+      "product_id": "LAPTOP-02",
+      "product_name": "Workstation Laptop",
+      "co_purchase_count": 394,
+      "margin": 290.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.131333,
+      "confidence": 0.39798,
+      "lift": 1.774056
+    },
+    {
+      "product_id": "WARRANTY-01",
+      "product_name": "3yr Extended Warranty",
+      "co_purchase_count": 368,
+      "margin": 85.0,
+      "is_promoted": true,
+      "promo_tag": "Q1 Bundle",
+      "support": 0.122667,
+      "confidence": 0.371717,
+      "lift": 1.76448
+    },
+    {
+      "product_id": "MOUSE-01",
+      "product_name": "Wireless Mouse",
+      "co_purchase_count": 300,
+      "margin": 5.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.1,
+      "confidence": 0.30303,
+      "lift": 1.744896
+    },
+    {
+      "product_id": "CABLE-01",
+      "product_name": "USB-C Cable 2m",
+      "co_purchase_count": 260,
+      "margin": 3.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.086667,
+      "confidence": 0.262626,
+      "lift": 1.270772
+    },
+    {
+      "product_id": "MONITOR-01",
+      "product_name": "27\" 4K Monitor",
+      "co_purchase_count": 403,
+      "margin": 70.0,
+      "is_promoted": false,
+      "promo_tag": null,
+      "support": 0.134333,
+      "confidence": 0.407071,
+      "lift": 1.234795
+    }
+  ]
+}

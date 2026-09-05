@@ -1,0 +1,92 @@
+{
+  "feature_names": [
+    "blended_overage_pct",
+    "worst_line_overage_pct",
+    "n_lines",
+    "n_flagged_lines",
+    "flagged_value_share",
+    "log_total_value",
+    "thin_margin_value_share",
+    "tier_ordinal",
+    "avg_discount_pct",
+    "max_discount_pct",
+    "seniority",
+    "is_quarter_end",
+    "discount_vs_rep_baseline"
+  ],
+  "label_to_band": {
+    "0": "LOW",
+    "1": "MEDIUM",
+    "2": "HIGH"
+  },
+  "n_train": 3200,
+  "n_test": 800,
+  "accuracy": 0.8762,
+  "macro_f1": 0.8453,
+  "params": {
+    "objective": "multi:softprob",
+    "num_class": 3,
+    "max_depth": 5,
+    "eta": 0.12,
+    "subsample": 0.9,
+    "colsample_bytree": 0.9,
+    "min_child_weight": 3,
+    "eval_metric": "mlogloss",
+    "seed": 42
+  },
+  "best_iteration": 75,
+  "feature_importance": [
+    [
+      "blended_overage_pct",
+      11.176
+    ],
+    [
+      "worst_line_overage_pct",
+      9.549
+    ],
+    [
+      "log_total_value",
+      3.134
+    ],
+    [
+      "seniority",
+      3.051
+    ],
+    [
+      "is_quarter_end",
+      2.66
+    ],
+    [
+      "thin_margin_value_share",
+      2.141
+    ],
+    [
+      "tier_ordinal",
+      1.7
+    ],
+    [
+      "flagged_value_share",
+      1.481
+    ],
+    [
+      "n_lines",
+      1.47
+    ],
+    [
+      "n_flagged_lines",
+      1.339
+    ],
+    [
+      "avg_discount_pct",
+      1.099
+    ],
+    [
+      "discount_vs_rep_baseline",
+      0.913
+    ],
+    [
+      "max_discount_pct",
+      0.897
+    ]
+  ]
+}
