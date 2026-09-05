@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #0f172a;
+  background-color: #f8fafc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background-color: #f8fafc; color: #0f172a; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+
+@layer utilities {
+  .shadow-xs {
+    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+  }
+}
+
+@layer components {
+  .df-panel {
+    @apply rounded-xl border border-slate-200/80 bg-white shadow-sm transition-all duration-200;
+  }
+  .df-card {
+    @apply rounded-lg border border-slate-200/80 bg-white shadow-sm transition-all duration-200 hover:shadow-md hover:border-slate-300;
+  }
+  .df-input {
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition duration-150 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 placeholder:text-slate-400;
+  }
+  .df-label {
+    @apply mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500;
+  }
+  .df-btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .df-btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none bg-brand-600 text-white shadow-sm hover:bg-brand-700 focus:ring-2 focus:ring-brand-500 focus:ring-offset-1;
+  }
+  .df-btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-400 focus:ring-2 focus:ring-slate-300;
+  }
+  .df-btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none border border-red-200 bg-red-50 text-red-700 shadow-sm hover:bg-red-100 hover:border-red-300 focus:ring-2 focus:ring-red-400;
+  }
+  .df-btn-success {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 focus:ring-2 focus:ring-emerald-500;
+  }
+  .df-badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-tight transition-colors;
+  }
+  .df-table {
+    @apply w-full text-left text-sm border-collapse;
+  }
+  .df-table th {
+    @apply border-b border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 select-none;
+  }
+  .df-table td {
+    @apply border-b border-slate-100 px-3.5 py-3 align-middle text-slate-700 transition-colors;
+  }
+  .df-table tr {
+    @apply transition-colors;
+  }
+  .df-table tr:hover td {
+    @apply bg-slate-50/60;
+  }
+  .df-table tr:last-child td {
+    @apply border-b-0;
+  }
+}
+
+/* Stagger animations */
+.animate-stagger-1 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.03s forwards; opacity: 0; }
+.animate-stagger-2 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.06s forwards; opacity: 0; }
+.animate-stagger-3 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.09s forwards; opacity: 0; }
+.animate-stagger-4 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.12s forwards; opacity: 0; }
+.animate-stagger-5 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards; opacity: 0; }
+.animate-stagger-6 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.18s forwards; opacity: 0; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+

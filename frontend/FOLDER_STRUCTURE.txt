@@ -1,0 +1,40 @@
+frontend/
+├── index.html
+├── package.json
+├── postcss.config.js
+├── tailwind.config.js
+├── vite.config.js
+├── README.md
+└── src/
+    ├── index.css
+    ├── main.jsx
+    ├── utils.js
+    ├── api/
+    │   ├── client.js
+    │   └── mockData.js
+    ├── components/
+    │   ├── AppShell.jsx
+    │   ├── DetailScreen.jsx
+    │   ├── ListScreen.jsx
+    │   ├── Panel.jsx
+    │   ├── PortalShell.jsx
+    │   ├── StatusBadge.jsx
+    │   └── StatusStepper.jsx
+    └── screens/
+        ├── Login.jsx
+        ├── Dashboard.jsx
+        ├── QuotationsList.jsx
+        ├── QuotationDetail.jsx
+        ├── ApprovalsList.jsx
+        ├── ApprovalDetail.jsx
+        ├── FulfillmentList.jsx
+        ├── FulfillmentDetail.jsx
+        ├── SubscriptionsList.jsx
+        ├── BillingDetail.jsx
+        ├── PortalNegotiation.jsx
+        ├── InvoicesList.jsx
+        ├── InvoiceDetail.jsx
+        ├── DealHealth.jsx
+        ├── Reports.jsx
+        ├── PortalMessages.jsx
+        └── PortalProfile.jsx

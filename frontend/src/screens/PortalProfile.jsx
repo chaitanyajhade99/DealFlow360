@@ -1,0 +1,2 @@
+import Panel from "../components/Panel";
+export default function PortalProfile(){return <section className="space-y-4"><h1 className="text-xl font-bold">Profile</h1><Panel title="Customer Profile"><div className="grid gap-3 sm:grid-cols-2"><div><div className="df-label">Company</div><div className="font-semibold">Acme Corp</div></div><div><div className="df-label">Contact</div><div className="font-semibold">buyer@acme.test</div></div></div></Panel></section>}
