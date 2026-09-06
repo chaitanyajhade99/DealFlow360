@@ -1,39 +1,65 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
-  Building,
-  CheckCircle2,
   SlidersHorizontal,
   Save,
-  Truck,
   Layers,
   AlertCircle,
+  RotateCcw,
 } from "lucide-react";
-import { getFulfillmentDetail } from "../api/client";
+import { getFulfillmentDetail, overrideFulfillment, resetFulfillment } from "../api/client";
 import DetailScreen from "../components/DetailScreen";
 import Panel from "../components/Panel";
 import Skeleton from "../components/Skeleton";
+import { useToast } from "../context/ToastContext";
+import { useRole } from "../context/RoleContext";
 import { code, money } from "../utils";
+
+// Builds { [product_id]: { [warehouse_id]: qty } } from the persisted splits
+// so the per-line, per-warehouse inputs start pre-filled with whatever's
+// currently allocated (suggested or a prior manual override).
+function splitsToGrid(splits) {
+  const grid = {};
+  for (const s of splits || []) {
+    if (s.is_backorder) continue;
+    grid[s.product_id] = grid[s.product_id] || {};
+    grid[s.product_id][s.warehouse_id] = s.qty;
+  }
+  return grid;
+}
 
 export default function FulfillmentDetail() {
   const { id } = useParams();
-  const [data, setData] = useState({
-    quotation: null,
-    lines: [],
-    fulfillment: null,
-    warehouses: [],
-  });
-  const [manual, setManual] = useState(false);
-  const [splits, setSplits] = useState([]);
+  const { toast } = useToast();
+  const { isFinance, isAdmin } = useRole();
+  // PDF section 3: Finance/Operations "manages warehouse fulfillment splits
+  // and backorder decisions" -- a Sales Rep only tracks progress (read-only).
+  // Enforced server-side too (POST .../override|reset are Finance/Admin-only);
+  // this just keeps a rep from seeing edit controls for an action the API
+  // will reject anyway.
+  const canOverride = isFinance || isAdmin;
+  const [data, setData] = useState({ quotation: null, lines: [], fulfillment: null, warehouses: [] });
+  // "editing" = the override FORM is open (only ever true for Finance/Admin).
+  // Whether the persisted record IS a manual override is a separate fact,
+  // read straight from data.fulfillment.is_manual_override below -- keeping
+  // these distinct means a rep loading an already-overridden quotation can
+  // never end up with edit inputs rendered, since editing always starts false.
+  const [editing, setEditing] = useState(false);
+  const [grid, setGrid] = useState({});
   const [loading, setLoading] = useState(true);
-  const [savedFeedback, setSavedFeedback] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const load = () =>
     getFulfillmentDetail(id).then((d) => {
       setData(d);
-      setSplits(d.fulfillment?.splits || []);
+      setGrid(splitsToGrid(d.fulfillment?.splits));
+      setEditing(false);
       setLoading(false);
     });
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   if (loading || !data.quotation) {
@@ -46,51 +72,83 @@ export default function FulfillmentDetail() {
     );
   }
 
+  const splits = data.fulfillment?.splits || [];
+  const backorders = data.fulfillment?.backorders || [];
   const totalQty = data.lines.reduce((s, l) => s + l.qty, 0);
-  const totalAllocated = splits.reduce((s, x) => s + Number(x.qty || 0), 0);
+  const totalAllocated = splits.filter((s) => !s.is_backorder).reduce((s, x) => s + Number(x.qty || 0), 0);
   const totalCost = splits.reduce((s, x) => s + Number(x.cost || 0), 0);
   const coveragePct = totalQty > 0 ? Math.min(100, Math.round((totalAllocated / totalQty) * 100)) : 100;
-  const isComplete = totalAllocated >= totalQty;
+  const isComplete = backorders.length === 0;
+  const isManualOverride = Boolean(data.fulfillment?.is_manual_override);
 
-  const handleSave = () => {
-    // The backend computes fulfillment splits live from real stock/cost data
-    // (GET /fulfillment/{id}) but does not expose a write endpoint to persist
-    // a manual override -- there is no PDF-specified contract for it. This
-    // stays a local preview so a rep can explore "what if" allocations
-    // without silently pretending the change was saved server-side.
-    setSavedFeedback(true);
-    setTimeout(() => setSavedFeedback(false), 3000);
+  const setCell = (productId, warehouseId, qty) => {
+    setGrid((prev) => ({
+      ...prev,
+      [productId]: { ...(prev[productId] || {}), [warehouseId]: qty },
+    }));
+  };
+
+  const handleSaveOverride = async () => {
+    const lines = [];
+    for (const line of data.lines) {
+      for (const wh of data.warehouses) {
+        const qty = Number(grid[line.product_id]?.[wh.id] || 0);
+        if (qty > 0) lines.push({ product_id: line.product_id, warehouse_id: wh.id, qty });
+      }
+    }
+    if (!lines.length) {
+      toast("Allocate at least one unit to at least one warehouse first.", "warning");
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await overrideFulfillment(id, lines);
+      setData((prev) => ({ ...prev, fulfillment: updated }));
+      setGrid(splitsToGrid(updated.splits));
+      toast("Manual override saved — this is now the persisted fulfillment plan.", "success");
+    } catch (err) {
+      toast(err.message || "Could not save override.", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAcceptSuggested = async () => {
+    setSaving(true);
+    try {
+      const updated = await resetFulfillment(id);
+      setData((prev) => ({ ...prev, fulfillment: updated }));
+      setGrid(splitsToGrid(updated.splits));
+      setEditing(false);
+      toast("Reverted to the algorithmic suggested split.", "success");
+    } catch (err) {
+      toast(err.message || "Could not reset fulfillment.", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <DetailScreen
       title={`Fulfillment Allocation · ${code("Q", data.quotation.id)}`}
       subtitle={`${data.quotation.customer_name} · Multi-depot routing and inventory readiness`}
-      actions={[
-        {
-          label: "Accept Suggested Split",
-          primary: !manual,
-          onClick: () => {
-            setManual(false);
-            setSplits(data.fulfillment?.splits || []);
-          },
-        },
-        {
-          label: manual ? "Lock Override" : "Manual Override",
-          primary: manual,
-          onClick: () => setManual((v) => !v),
-        },
-      ]}
+      actions={
+        canOverride
+          ? [
+              { label: "Accept Suggested Split", primary: !editing, onClick: handleAcceptSuggested },
+              { label: editing ? "Cancel Override" : "Manual Override", primary: editing, onClick: () => setEditing((v) => !v) },
+            ]
+          : []
+      }
       banner={{
         title: isComplete
           ? "Warehouse split allocation verified:"
           : "Stock allocation variance detected:",
         body: `${totalAllocated} of ${totalQty} requested units allocated (${coveragePct}% coverage). Total estimated shipping cost: ${money(
           totalCost
-        )}.`,
+        )}.${backorders.length ? ` ${backorders.reduce((s, b) => s + b.qty, 0)} unit(s) on backorder.` : ""}`,
       }}
     >
-      {/* Allocation Progress Bar Banner */}
       <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs">
         <div className="flex items-center justify-between text-xs mb-2">
           <span className="font-bold text-slate-700 flex items-center gap-1.5">
@@ -109,52 +167,12 @@ export default function FulfillmentDetail() {
         </div>
       </div>
 
-      {savedFeedback && (
-        <div className="flex items-center justify-between rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs text-emerald-900 animate-fade-slide-in">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            <span>Override previewed locally (not persisted — see note below).</span>
-          </div>
-        </div>
-      )}
-
-      {/* Order Lines */}
-      <Panel title="Order Line Items & Demand Requirements">
-        <div className="overflow-x-auto">
-          <table className="df-table">
-            <thead>
-              <tr>
-                <th>Product Code</th>
-                <th>Category</th>
-                <th>Requested Qty</th>
-                <th>Unit Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.lines.map((l) => (
-                <tr key={l.id}>
-                  <td className="font-mono text-xs font-bold text-slate-900">{l.product_id}</td>
-                  <td>
-                    <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                      {l.category}
-                    </span>
-                  </td>
-                  <td className="font-bold text-slate-800">{l.qty} units</td>
-                  <td className="font-mono text-xs text-slate-700">{money(l.unit_price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-
-      {/* Warehouse Split */}
       <Panel
         title="Multi-Warehouse Inventory Allocation"
         right={
-          manual ? (
+          isManualOverride ? (
             <span className="flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200">
-              <SlidersHorizontal className="h-3 w-3" /> Manual Override Active
+              <SlidersHorizontal className="h-3 w-3" /> Manual Override
             </span>
           ) : (
             <span className="flex items-center gap-1 text-[11px] font-bold text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded border border-brand-200">
@@ -163,102 +181,108 @@ export default function FulfillmentDetail() {
           )
         }
       >
-        <div className="overflow-x-auto">
-          <table className="df-table">
-            <thead>
-              <tr>
-                <th>Depot Facility</th>
-                <th>Allocated Quantity</th>
-                <th>Estimated Freight Cost</th>
-                <th>Routing Mode</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.warehouses.map((w) => {
-                const existing = splits.find((s) => s.warehouse_id === w.id) || {
-                  warehouse_id: w.id,
-                  qty: 0,
-                  cost: 0,
-                };
-                return (
-                  <tr key={w.id}>
-                    <td>
-                      <div className="font-bold text-xs text-slate-900">{w.name}</div>
-                      <div className="text-[11px] text-slate-400">Warehouse #{w.id}</div>
-                    </td>
-                    <td>
-                      {manual ? (
-                        <div className="relative w-32">
-                          <input
-                            aria-label={`Allocated quantity for ${w.name}`}
-                            className="df-input py-1 px-2.5 text-xs font-mono font-bold border-amber-300 bg-amber-50/50 focus:border-amber-500 focus:ring-amber-200"
-                            type="number"
-                            min="0"
-                            value={existing.qty}
-                            onChange={(e) =>
-                              setSplits((prev) =>
-                                prev.some((x) => x.warehouse_id === w.id)
-                                  ? prev.map((x) =>
-                                      x.warehouse_id === w.id
-                                        ? { ...x, qty: Number(e.target.value) }
-                                        : x
-                                    )
-                                  : [
-                                      ...prev,
-                                      {
-                                        ...existing,
-                                        qty: Number(e.target.value),
-                                      },
-                                    ]
-                              )
-                            }
-                          />
-                        </div>
-                      ) : (
-                        <span className="font-mono text-xs font-bold text-slate-900">
-                          {existing.qty} units
-                        </span>
+        <div className="space-y-5">
+          {data.lines.map((line) => {
+            // Editing (Finance/Admin only) needs every warehouse as a
+            // candidate destination, even ones not currently allocated.
+            // Read-only view (everyone else, or Finance/Admin before
+            // clicking "Manual Override") is built purely from the
+            // persisted splits -- each row already carries its own
+            // warehouse name, so it renders correctly even when
+            // data.warehouses is empty (a Sales Rep's GET /warehouses is
+            // 403'd server-side and resolves to []).
+            const rowsForLine = editing
+              ? data.warehouses.map((w) => ({ warehouse_id: w.id, warehouse: w.name, w }))
+              : splits.filter((s) => s.product_id === line.product_id && !s.is_backorder);
+            const lineBackorder = backorders.find((b) => b.product_id === line.product_id);
+
+            return (
+              <div key={line.id} className="rounded-lg border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-bold text-slate-800">
+                    {line.product_id} <span className="font-normal text-slate-400">— {line.qty} units required</span>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="df-table">
+                    <thead>
+                      <tr>
+                        <th>Depot Facility</th>
+                        <th>Allocated Qty</th>
+                        <th>Est. Freight Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rowsForLine.map((row) => {
+                        const qty = editing ? grid[line.product_id]?.[row.warehouse_id] || 0 : row.qty;
+                        const cost = editing
+                          ? (qty > 0 ? Number(row.w.shipment_fixed_cost) + Number(row.w.shipping_cost_per_unit) * qty : 0)
+                          : row.cost;
+                        return (
+                          <tr key={row.warehouse_id}>
+                            <td className="font-bold text-xs text-slate-900">{row.warehouse}</td>
+                            <td>
+                              {editing ? (
+                                <input
+                                  aria-label={`Allocate ${line.product_id} from ${row.warehouse}`}
+                                  className="df-input w-24 py-1 px-2.5 text-xs font-mono font-bold border-amber-300 bg-amber-50/50 focus:border-amber-500 focus:ring-amber-200"
+                                  type="number"
+                                  min="0"
+                                  value={qty}
+                                  onChange={(e) => setCell(line.product_id, row.warehouse_id, e.target.value)}
+                                />
+                              ) : (
+                                <span className="font-mono text-xs font-bold text-slate-900">{qty} units</span>
+                              )}
+                            </td>
+                            <td className="font-mono text-xs text-slate-700">{money(cost)}</td>
+                          </tr>
+                        );
+                      })}
+                      {!rowsForLine.length && !editing && (
+                        <tr>
+                          <td colSpan={3} className="text-center text-xs text-slate-400 py-3">
+                            No allocation yet.
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td className="font-mono text-xs text-slate-700">{money(existing.cost)}</td>
-                    <td>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          manual
-                            ? "bg-amber-100 text-amber-800 border border-amber-200"
-                            : "bg-brand-50 text-brand-700 border border-brand-200"
-                        }`}
-                      >
-                        {manual ? "Editable Override" : "Algorithmic"}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      {lineBackorder && (
+                        <tr>
+                          <td className="font-bold text-xs text-red-700">Backorder</td>
+                          <td className="font-mono text-xs font-bold text-red-700">{lineBackorder.qty} units short</td>
+                          <td>—</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {manual && (
-          <div className="mt-4 flex justify-end">
-            <button onClick={handleSave} className="df-btn-primary gap-1.5" aria-label="Save manual split">
+        {editing && (
+          <div className="mt-4 flex justify-end gap-2">
+            <button onClick={() => { setEditing(false); setGrid(splitsToGrid(splits)); }} className="df-btn-secondary gap-1.5">
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Discard Changes</span>
+            </button>
+            <button onClick={handleSaveOverride} disabled={saving} className="df-btn-primary gap-1.5" aria-label="Save manual split">
               <Save className="h-3.5 w-3.5" />
-              <span>Save Manual Override</span>
+              <span>{saving ? "Saving..." : "Save Manual Override"}</span>
             </button>
           </div>
         )}
       </Panel>
 
-      <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-800">
-        <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+      <div className="flex items-start gap-2.5 rounded-lg border border-sky-200 bg-sky-50/60 p-3 text-xs text-sky-900">
+        <AlertCircle className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
         <div>
-          <b>Contract note:</b> The split and cost figures above are computed live by the backend's
-          warehouse-allocation engine (real stock, real shipping cost). Manual Override stays a local
-          preview because the PDF's contract never specifies a write endpoint for persisting a
-          fulfillment override — the "Accept Suggested Split" data is the real, backend-computed answer.
+          {canOverride
+            ? <>Every allocation above is validated against each warehouse's real live stock and the quotation's actual required quantities before it's saved — <code className="font-mono">POST /fulfillment/{data.quotation.id}/override</code>. Under-allocating a line creates a real backorder row, same as the suggested split.</>
+            : "Warehouse fulfillment splits and backorder decisions are managed by Finance/Operations — this view is read-only."}
         </div>
       </div>
     </DetailScreen>
   );
 }
-

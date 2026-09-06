@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from models import PriceList, Product, ProductVariant, get_db
+from api.deps import require_roles
 from api.schemas import ProductIn, ProductOut
 
 router = APIRouter(tags=["products"])
@@ -18,7 +19,7 @@ def _apply_nested(db: Session, product: Product, payload: ProductIn) -> None:
 
 
 @router.post("/products", response_model=ProductOut)
-def create_product(payload: ProductIn, db: Session = Depends(get_db)):
+def create_product(payload: ProductIn, db: Session = Depends(get_db), _admin=Depends(require_roles("admin"))):
     if db.query(Product).filter(Product.product_code == payload.product_code).first():
         raise HTTPException(status_code=400, detail="product_code already exists")
     data = payload.model_dump(exclude={"variants", "price_lists"})
@@ -45,7 +46,7 @@ def get_product(id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/products/{id}", response_model=ProductOut)
-def update_product(id: int, payload: ProductIn, db: Session = Depends(get_db)):
+def update_product(id: int, payload: ProductIn, db: Session = Depends(get_db), _admin=Depends(require_roles("admin"))):
     product = db.get(Product, id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")

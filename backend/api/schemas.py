@@ -72,9 +72,11 @@ class ApprovalOut(BaseModel):
 
 class ApprovalDecisionIn(BaseModel):
     action: str  # approve | reject | return
-    user: str
     note: Optional[str] = None
-    user_id: Optional[int] = None  # optional, for AuditLog attribution
+    # The reviewer is resolved server-side from the caller's JWT (see
+    # api.approvals.decide_approval), never taken from the request body --
+    # a client-sent name/id could otherwise be spoofed to misattribute who
+    # made the decision on the audit trail.
 
 
 # ---- Fulfillment ----
@@ -86,6 +88,17 @@ class FulfillmentSplitOut(BaseModel):
     splits: list[dict[str, Any]] = []
     # Transient, not persisted to fulfillment_splits.splits — see api/fulfillment.py
     backorders: list[dict[str, Any]] = []
+    is_manual_override: bool = False
+
+
+class ManualFulfillmentLineIn(BaseModel):
+    """One (product, warehouse) allocation in a rep's manual override (PDF
+    B6). A full override is `list[ManualFulfillmentLineIn]` -- one entry per
+    warehouse a product line is being sourced from.
+    """
+    product_id: str
+    warehouse_id: int
+    qty: int
 
 
 # ---- Subscription ----
@@ -287,6 +300,12 @@ class NegotiationRequestOut(BaseModel):
     created_at: datetime
 
 
+class NegotiationResponseIn(BaseModel):
+    action: str  # "accept" | "decline" -- PDF section 3: "Sales Rep ... Responds to
+    # customer negotiation requests"
+    note: Optional[str] = None
+
+
 # ---- Warehouse ----
 
 class WarehouseIn(BaseModel):
@@ -439,7 +458,8 @@ class DashboardSummaryOut(BaseModel):
 # ---- Deal health actions (nudge / escalate) ----
 
 class DealHealthActionIn(BaseModel):
-    user: Optional[str] = None
+    # actor is resolved server-side from the caller's JWT, not sent here --
+    # see api.deal_health._reviewer_name
     note: Optional[str] = None
 
 

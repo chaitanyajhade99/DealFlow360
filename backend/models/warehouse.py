@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, JSON, Numeric, String
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, JSON, Numeric, String
 from sqlalchemy.orm import relationship
 
 from models.database import Base
@@ -23,6 +23,11 @@ class FulfillmentSplit(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     quotation_id = Column(Integer, ForeignKey("quotations.id"), nullable=False)
-    splits = Column(JSON, nullable=False, default=list)  # [{warehouse_id, qty, cost}]
+    splits = Column(JSON, nullable=False, default=list)  # [{warehouse_id, product_id, qty, cost}]
+    # PDF B6: "Manual Override" button. When true, GET /fulfillment/{id} stops
+    # recomputing/overwriting splits from the live auto-allocation engine on
+    # every call -- the rep's persisted choice is authoritative until they
+    # explicitly reset it back to the suggested split.
+    is_manual_override = Column(Boolean, nullable=False, default=False, server_default="false")
 
     quotation = relationship("Quotation", back_populates="fulfillment_splits")

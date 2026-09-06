@@ -337,6 +337,7 @@ PDF A6 (optional) — product pairings for the Upsell/Cross-Sell Panel (B5).
 | suggested_product_id | integer, FK -> products.id | the suggestion |
 | is_promoted | boolean | ranks higher in suggestions |
 | min_margin_pct | numeric(5,2) | only surface if margin clears this |
+| suggestion_type | text, default `'cross_sell'` | **added 2026-09-06.** `"upsell"` (a richer plan/tier for the same purchase, e.g. Extended Warranty → Premium Support Plan) vs `"cross_sell"` (a separate, complementary product, e.g. Laptop → Docking Station). Admin-set per pairing on creation, never inferred at query time — the ranking engine only passes it through. |
 
 ## 17. `audit_logs`
 

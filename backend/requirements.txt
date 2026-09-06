@@ -9,3 +9,5 @@ PyJWT>=2.8
 requests>=2.31  # demo/run_demo.py only
 reportlab>=4.1  # GET /quotations/{id}/pdf
 razorpay>=1.4  # /invoices/{id}/razorpay-* payment flow
+xgboost>=2.0  # engines/risk_model.py -- ML escalation layer on top of the rule engine
+openpyxl>=3.1  # GET /reports/export.xlsx

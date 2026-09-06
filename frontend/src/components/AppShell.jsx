@@ -17,6 +17,13 @@ import {
 } from "lucide-react";
 import { useRole, ROLE_DETAILS } from "../context/RoleContext";
 
+// PDF section 3: "Finance / Operations User ... Reconciles recurring
+// billing and credit notes" -- billing/invoice records are Finance's
+// responsibility, not something the PS gives a Sales Rep or Sales Manager a
+// reason to browse. Hidden here to match the backend's own read-access gate
+// (api/invoices.py) rather than just relying on a 403 after navigating in.
+const FINANCE_ONLY_LABELS = new Set(["Invoices"]);
+
 const internal = [
   { label: "Dashboard", to: "/app", icon: LayoutDashboard },
   { label: "Quotations", to: "/app/quotations", icon: FileText },
@@ -31,12 +38,14 @@ const internal = [
 export default function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { internalUser, isAdmin, logout } = useRole();
+  const { internalUser, isAdmin, isFinance, logout } = useRole();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const canSeeFinanceOnly = isFinance || isAdmin;
+  const visible = internal.filter((item) => canSeeFinanceOnly || !FINANCE_ONLY_LABELS.has(item.label));
   const navItems = isAdmin
-    ? [...internal, { label: "Admin", to: "/app/admin/products", icon: Settings }]
-    : internal;
+    ? [...visible, { label: "Admin", to: "/app/admin/products", icon: Settings }]
+    : visible;
 
   const handleLogout = () => {
     logout();

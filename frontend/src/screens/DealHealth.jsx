@@ -23,7 +23,7 @@ export default function DealHealth() {
   const handleAction = async (fn, quotationId, label) => {
     setBusyId(quotationId);
     try {
-      await fn(quotationId, { user: "Current User" });
+      await fn(quotationId, {});
       toast(`${label} sent for ${code("Q", quotationId)}.`, "success");
     } catch (err) {
       toast(err.message || "Action failed.", "error");

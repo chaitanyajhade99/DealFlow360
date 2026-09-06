@@ -11,6 +11,8 @@ import {
   downloadQuotationPdf,
   getCustomers,
   createCustomer,
+  getQuotationNegotiations,
+  respondToNegotiation,
 } from "../api/client";
 import DetailScreen from "../components/DetailScreen";
 import Panel from "../components/Panel";
@@ -18,8 +20,6 @@ import StatusBadge from "../components/StatusBadge";
 import Skeleton from "../components/Skeleton";
 import { useToast } from "../context/ToastContext";
 import { code, lineTotal, money, pct } from "../utils";
-
-const CATEGORIES = ["Hardware", "Services", "Subscription"];
 
 function emptyLine() {
   return { product_id: "", category: "Hardware", qty: 1, unit_price: 0, discount_pct: 0 };
@@ -40,6 +40,8 @@ export default function QuotationDetail() {
   const [newCustomerName, setNewCustomerName] = useState("");
   const [addingCustomer, setAddingCustomer] = useState(false);
   const [upsell, setUpsell] = useState([]);
+  const [negotiations, setNegotiations] = useState([]);
+  const [respondingId, setRespondingId] = useState(null);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -91,6 +93,7 @@ export default function QuotationDetail() {
       setLines(d.lines.map((l) => ({ ...l })));
       setLoading(false);
       getUpsellSuggestions(id).then(setUpsell).catch(() => setUpsell([]));
+      getQuotationNegotiations(id).then(setNegotiations).catch(() => setNegotiations([]));
     });
   }, [id, isNew]);
 
@@ -157,8 +160,9 @@ export default function QuotationDetail() {
     }
   };
 
-  const handleSaveLines = async () => {
-    const validLines = lines.filter((l) => l.product_id && Number(l.qty) > 0);
+  const handleSaveLines = async (linesOverride, reason) => {
+    const source = linesOverride || lines;
+    const validLines = source.filter((l) => l.product_id && Number(l.qty) > 0);
     if (!validLines.length) {
       toast("A quotation needs at least one product line — add one before saving.", "warning");
       return false;
@@ -173,7 +177,7 @@ export default function QuotationDetail() {
           unit_price: Number(l.unit_price),
           discount_pct: Number(l.discount_pct || 0),
         })),
-        reason: "Edited from quotation builder",
+        reason: reason || "Edited from quotation builder",
       };
       const updated = await updateQuotationLines(id, payload);
       setData({ quotation: updated, lines: updated.lines });
@@ -186,6 +190,33 @@ export default function QuotationDetail() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAddUpsellSuggestion = async (suggestion) => {
+    const product = products.find((p) => p.product_code === suggestion.product_id);
+    const newLine = {
+      product_id: suggestion.product_id,
+      category: product?.category || "Hardware",
+      qty: 1,
+      unit_price: product?.price || 0,
+      discount_pct: 0,
+    };
+    const nextLines = [...lines, newLine];
+    setLines(nextLines);
+    setUpsell((prev) => prev.filter((s) => s.product_id !== suggestion.product_id));
+
+    if (isNew) {
+      toast(`${suggestion.name || suggestion.product_id} added — save the quotation to persist it.`, "success");
+      return;
+    }
+    const saved = await handleSaveLines(nextLines, `Added upsell suggestion: ${suggestion.name || suggestion.product_id}`);
+    if (saved) {
+      getUpsellSuggestions(id).then(setUpsell).catch(() => {});
+    }
+  };
+
+  const handleDismissUpsellSuggestion = (productId) => {
+    setUpsell((prev) => prev.filter((s) => s.product_id !== productId));
   };
 
   const handleSubmit = async () => {
@@ -205,6 +236,34 @@ export default function QuotationDetail() {
       toast(err.message || "Could not submit quotation.", "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleRespondNegotiation = async (negotiation, action) => {
+    setRespondingId(negotiation.id);
+    try {
+      const result = await respondToNegotiation(id, negotiation.id, action);
+      if (action === "accept") {
+        toast(
+          result.approval_stage === "confirmed"
+            ? "Counter accepted — quotation confirmed."
+            : `Counter accepted — routed for approval: ${result.approval_stage.replace("_", " ")} (${result.blended_risk} risk).`,
+          "success"
+        );
+      } else {
+        toast("Counter declined. Customer will see this and can propose again.", "success");
+      }
+      const [refreshed, refreshedNegotiations] = await Promise.all([
+        getQuotationDetail(id),
+        getQuotationNegotiations(id),
+      ]);
+      setData(refreshed);
+      setLines(refreshed.lines.map((l) => ({ ...l })));
+      setNegotiations(refreshedNegotiations);
+    } catch (err) {
+      toast(err.message || "Could not respond to negotiation.", "error");
+    } finally {
+      setRespondingId(null);
     }
   };
 
@@ -338,13 +397,42 @@ export default function QuotationDetail() {
                 <div key={s.product_id} className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs">
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="text-xs font-bold text-slate-800">{s.product_name}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                            s.suggestion_type === "upsell"
+                              ? "bg-violet-50 text-violet-700 border border-violet-200"
+                              : "bg-sky-50 text-sky-700 border border-sky-200"
+                          }`}
+                        >
+                          {s.suggestion_type === "upsell" ? "Upsell" : "Cross-sell"}
+                        </span>
+                        <div className="text-xs font-bold text-slate-800">{s.name || s.product_id}</div>
+                      </div>
                       <div className="text-[11px] text-slate-400 mt-0.5">{s.promo_tag || "Recommended pairing"}</div>
                     </div>
                     <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
                       +{money(s.margin_delta)} margin
                     </span>
                   </div>
+                  {!readOnly && (
+                    <div className="mt-2.5 flex gap-2">
+                      <button
+                        type="button"
+                        className="rounded-md bg-brand-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-brand-700"
+                        onClick={() => handleAddUpsellSuggestion(s)}
+                      >
+                        Add to Quote
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-50"
+                        onClick={() => handleDismissUpsellSuggestion(s.product_id)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -354,6 +442,56 @@ export default function QuotationDetail() {
         </Panel>
       }
     >
+      {negotiations.some((n) => n.status === "pending") && (
+        <Panel
+          title="Customer Negotiation Requests"
+          right={
+            <span className="rounded bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
+              Awaiting your response
+            </span>
+          }
+        >
+          <div className="space-y-3">
+            {negotiations
+              .filter((n) => n.status === "pending")
+              .map((n) => {
+                const line = lines.find((l) => l.id === n.quotation_line_id);
+                return (
+                  <div key={n.id} className="rounded-xl border border-amber-200 bg-amber-50/40 p-3.5">
+                    <div className="text-xs font-bold text-slate-800">
+                      {line ? line.product_name || line.product_id : "General request"}
+                      {line && ` — currently ${line.discount_pct}% off`}
+                    </div>
+                    {n.counter_discount_pct != null && (
+                      <div className="mt-1 text-xs font-mono font-bold text-brand-700">
+                        Customer requests: {n.counter_discount_pct}% off
+                      </div>
+                    )}
+                    {n.message && <div className="mt-1 text-xs text-slate-600 italic">"{n.message}"</div>}
+                    <div className="mt-2.5 flex gap-2">
+                      <button
+                        type="button"
+                        disabled={respondingId === n.id}
+                        className="rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                        onClick={() => handleRespondNegotiation(n, "accept")}
+                      >
+                        {respondingId === n.id ? "Working..." : "Accept Counter"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={respondingId === n.id}
+                        className="rounded-md border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        onClick={() => handleRespondNegotiation(n, "decline")}
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </Panel>
+      )}
       <Panel
         title="Commercial Line Items & Discount Guardrails"
         right={
@@ -430,13 +568,7 @@ function LineEditor({ lines, products, onUpdate, onAdd, onRemove, readOnly }) {
                   )}
                 </td>
                 <td>
-                  {readOnly ? (
-                    <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">{line.category}</span>
-                  ) : (
-                    <select className="df-input text-xs py-1" value={line.category} onChange={(e) => onUpdate(idx, "category", e.target.value)}>
-                      {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  )}
+                  <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">{line.category}</span>
                 </td>
                 <td>
                   {readOnly ? <span className="font-semibold text-slate-700">{line.qty}</span> : (
@@ -444,9 +576,9 @@ function LineEditor({ lines, products, onUpdate, onAdd, onRemove, readOnly }) {
                   )}
                 </td>
                 <td>
-                  {readOnly ? <span className="font-mono text-xs text-slate-700">{money(line.unit_price)}</span> : (
-                    <input type="number" min="0" step="0.01" className="df-input w-24 text-xs py-1" value={line.unit_price} onChange={(e) => onUpdate(idx, "unit_price", e.target.value)} />
-                  )}
+                  <span className="font-mono text-xs text-slate-700" title="Set by the product's price list — apply a discount below to adjust the customer's price">
+                    {money(line.unit_price)}
+                  </span>
                 </td>
                 <td>
                   <div className="relative w-28">

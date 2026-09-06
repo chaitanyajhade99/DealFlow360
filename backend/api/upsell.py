@@ -55,6 +55,7 @@ def get_upsell_suggestions(quotation_id: int, db: Session = Depends(get_db)):
             "is_promoted": suggested.is_promoted,
             "margin": margin,
             "co_purchase_count": co_counts.get((source.product_code, suggested.product_code), 0),
+            "suggestion_type": rule.suggestion_type,
         })
 
     suggestions = recommend_upsell(cart_items, co_occurrence_data)

@@ -219,17 +219,17 @@ def seed():
         db.add(UpsellRule(
             source_product_id=products_by_code["LAPTOP-PRO-14"].id,
             suggested_product_id=products_by_code["DOCKING-STATION"].id,
-            is_promoted=True, min_margin_pct=12,
+            is_promoted=True, min_margin_pct=12, suggestion_type="cross_sell",
         ))
         db.add(UpsellRule(
             source_product_id=products_by_code["LAPTOP-PRO-14"].id,
             suggested_product_id=products_by_code["EXT-WARRANTY"].id,
-            is_promoted=True, min_margin_pct=10,
+            is_promoted=True, min_margin_pct=10, suggestion_type="upsell",
         ))
         db.add(UpsellRule(
             source_product_id=products_by_code["NETWORK-SWITCH-24P"].id,
             suggested_product_id=products_by_code["PREMIUM-SUPPORT"].id,
-            is_promoted=True, min_margin_pct=15,
+            is_promoted=True, min_margin_pct=15, suggestion_type="upsell",
         ))
 
         # --- Bulk Indian-market product catalog (~80 SKUs, PDF A2) ---
@@ -260,11 +260,19 @@ def seed():
         for source_code in promoted_sources:
             candidates = [c for c in accessory_pool if c != source_code]
             for suggested_code in RNG.sample(candidates, k=min(2, len(candidates))):
+                suggested_product = products_by_code[suggested_code]
+                # Heuristic for the bulk-generated pairs: a Services/Subscription
+                # suggestion attaches a richer plan/tier to the same purchase
+                # (upsell); a Hardware suggestion is a separate, complementary
+                # item (cross_sell). The 3 hand-authored rules above are typed
+                # explicitly rather than by this rule.
+                suggestion_type = "upsell" if suggested_product.category in ("Services", "Subscription") else "cross_sell"
                 db.add(UpsellRule(
                     source_product_id=products_by_code[source_code].id,
-                    suggested_product_id=products_by_code[suggested_code].id,
-                    is_promoted=products_by_code[suggested_code].is_promoted,
+                    suggested_product_id=suggested_product.id,
+                    is_promoted=suggested_product.is_promoted,
                     min_margin_pct=RNG.choice([8, 10, 12, 15]),
+                    suggestion_type=suggestion_type,
                 ))
 
         # --- Subscription plan definitions (PDF A5) ---

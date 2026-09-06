@@ -1,17 +1,33 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Filter, TrendingUp, Clock, Sparkles } from "lucide-react";
-import { getReportSummary } from "../api/client";
+import { Filter, TrendingUp, Clock, Sparkles, Download } from "lucide-react";
+import { getReportSummary, exportReportPdf, exportReportXlsx } from "../api/client";
 import Panel from "../components/Panel";
 import StatusBadge from "../components/StatusBadge";
 import Skeleton from "../components/Skeleton";
+import { useToast } from "../context/ToastContext";
 import { code, date } from "../utils";
 
 export default function Reports() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [filters, setFilters] = useState({ date_from: "", date_to: "", approval_status: "", category: "" });
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(null);
+
+  const activeParams = () => Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
+
+  const handleExport = async (kind) => {
+    setExporting(kind);
+    try {
+      await (kind === "pdf" ? exportReportPdf(activeParams()) : exportReportXlsx(activeParams()));
+    } catch (err) {
+      toast(err.message || "Could not generate export.", "error");
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const load = (f) => {
     setLoading(true);
@@ -33,9 +49,19 @@ export default function Reports() {
 
   return (
     <div className="space-y-6 animate-fade-slide-in">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight text-slate-900">Reports & Analytics</h1>
-        <p className="mt-1 text-xs text-slate-500">Live pipeline metrics filtered by period, approval status, and category (PDF A7).</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">Reports & Analytics</h1>
+          <p className="mt-1 text-xs text-slate-500">Live pipeline metrics filtered by period, approval status, and category (PDF A7).</p>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={() => handleExport("pdf")} disabled={exporting} className="df-btn-secondary gap-1.5 text-xs">
+            <Download className="h-3.5 w-3.5" /> {exporting === "pdf" ? "Exporting..." : "Export PDF"}
+          </button>
+          <button onClick={() => handleExport("xlsx")} disabled={exporting} className="df-btn-secondary gap-1.5 text-xs">
+            <Download className="h-3.5 w-3.5" /> {exporting === "xlsx" ? "Exporting..." : "Export XLS"}
+          </button>
+        </div>
       </div>
 
       <form onSubmit={applyFilters} className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs">
@@ -137,7 +163,7 @@ export default function Reports() {
       </Panel>
 
       <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-500">
-        PDF/XLS export is not implemented yet — needs a library decision (reportlab/openpyxl) the team hasn't made. Every number above is live from the backend.
+Export PDF/XLS above downloads exactly this filtered result set (same query the summary above is built from). Every number is live from the backend.
       </div>
     </div>
   );

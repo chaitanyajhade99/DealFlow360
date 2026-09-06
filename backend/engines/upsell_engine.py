@@ -168,6 +168,12 @@ def recommend_upsell(
                     "is_promoted": promoted,
                     "promo_tag": entry.get("promo_tag"),
                     "product_name": entry.get("product_name") or product_id,
+                    # "upsell" (richer plan/tier for the same purchase) vs
+                    # "cross_sell" (a separate, complementary product) --
+                    # admin-set on the UpsellRule, passed through untouched;
+                    # this function doesn't infer it. Defaults to cross_sell
+                    # for callers that don't supply it.
+                    "suggestion_type": entry.get("suggestion_type") or "cross_sell",
                 }
             else:
                 existing["co_purchase_count"] += count
@@ -238,6 +244,7 @@ def recommend_upsell(
                 "is_promoted": row["is_promoted"],
                 "promo_tag": row["promo_tag"] if row["is_promoted"] else None,
                 "product_name": row["product_name"],
+                "suggestion_type": row["suggestion_type"],
             }
         )
 

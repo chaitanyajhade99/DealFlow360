@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from models import CreditNote, Subscription, SubscriptionPlan, get_db
+from api.deps import require_roles
 from api.schemas import (
     CreditNoteOut,
     SubscriptionCancelIn,
@@ -144,7 +145,7 @@ def list_subscription_credit_notes(id: int, db: Session = Depends(get_db)):
 # ---- Subscription plan definitions (PDF A5) ----
 
 @router.post("/subscription-plans", response_model=SubscriptionPlanOut)
-def create_subscription_plan(payload: SubscriptionPlanIn, db: Session = Depends(get_db)):
+def create_subscription_plan(payload: SubscriptionPlanIn, db: Session = Depends(get_db), _admin=Depends(require_roles("admin"))):
     plan = SubscriptionPlan(**payload.model_dump())
     db.add(plan)
     db.commit()

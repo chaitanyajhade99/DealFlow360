@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from engines import detect_anomalies
-from models import AuditLog, Quotation, get_db
+from models import AuditLog, Quotation, User, get_db
+from api.deps import get_current_internal_user
 from api.schemas import DealHealthActionIn, DealHealthActionOut, DealHealthOut
 
 router = APIRouter(tags=["deal-health"])
@@ -93,29 +94,44 @@ def get_deal_health(db: Session = Depends(get_db)):
 # alert". Both write to AuditLog so the action shows up in the dashboard's
 # recent-activity feed and in any per-quotation history view.
 
+def _reviewer_name(db: Session, reviewer: dict) -> str:
+    """Same rule as api.approvals.decide_approval: the actor recorded on the
+    audit trail is the authenticated caller resolved from the JWT, never a
+    client-sent name that could be spoofed.
+    """
+    user = db.get(User, int(reviewer["sub"]))
+    return user.name if user else "Unknown reviewer"
+
+
 @router.post("/deal-health/{quotation_id}/nudge", response_model=DealHealthActionOut)
-def nudge_quotation(quotation_id: int, payload: DealHealthActionIn, db: Session = Depends(get_db)):
+def nudge_quotation(
+    quotation_id: int, payload: DealHealthActionIn, db: Session = Depends(get_db),
+    reviewer=Depends(get_current_internal_user),
+):
     quotation = db.get(Quotation, quotation_id)
     if not quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
     db.add(AuditLog(
         entity_type="quotation", entity_id=quotation_id, action="nudge",
         reason=payload.note or "Nudged from Deal Health dashboard",
-        after={"actor": payload.user},
+        after={"actor": _reviewer_name(db, reviewer)},
     ))
     db.commit()
     return DealHealthActionOut(status="ok", action="nudge", quotation_id=quotation_id)
 
 
 @router.post("/deal-health/{quotation_id}/escalate", response_model=DealHealthActionOut)
-def escalate_quotation(quotation_id: int, payload: DealHealthActionIn, db: Session = Depends(get_db)):
+def escalate_quotation(
+    quotation_id: int, payload: DealHealthActionIn, db: Session = Depends(get_db),
+    reviewer=Depends(get_current_internal_user),
+):
     quotation = db.get(Quotation, quotation_id)
     if not quotation:
         raise HTTPException(status_code=404, detail="Quotation not found")
     db.add(AuditLog(
         entity_type="quotation", entity_id=quotation_id, action="escalate",
         reason=payload.note or "Escalated from Deal Health dashboard",
-        after={"actor": payload.user},
+        after={"actor": _reviewer_name(db, reviewer)},
     ))
     db.commit()
     return DealHealthActionOut(status="ok", action="escalate", quotation_id=quotation_id)

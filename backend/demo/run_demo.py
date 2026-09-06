@@ -150,9 +150,20 @@ def main() -> None:
         "Sales Manager approves -- escalates to Finance, doesn't confirm yet",
         "A3, 'which range needs Sales Manager followed by Finance'",
     )
+    print("  Each decision must come from that role's OWN login now -- the")
+    print("  server resolves the reviewer from the JWT and rejects a Sales")
+    print("  Rep (or anyone else) trying to decide someone else's approval.")
+
+    resp, body = call("POST", "/auth/login", json={
+        "email": "m.shah@dealflow360.example", "password": "password123",
+    })
+    require_ok(resp, body, "manager login")
+    manager_headers = {"Authorization": f"Bearer {body['access_token']}"}
+    show("Logged in as", f"{body['user']['name']} ({body['user']['role']})")
+
     resp, body = call("POST", f"/approvals/{approval_id}/decision", json={
-        "action": "approve", "user": "M. Shah", "user_id": 2,
-    }, headers=H)
+        "action": "approve",
+    }, headers=manager_headers)
     require_ok(resp, body, "manager approve")
     show("Stage after manager approves", body["stage"])
     assert body["stage"] == "finance", "HIGH risk must escalate to finance, not confirm"
@@ -160,9 +171,16 @@ def main() -> None:
     print("  needed a second, independent Finance sign-off. That's a real")
     print("  two-step chain, not a single rubber stamp.")
 
+    resp, body = call("POST", "/auth/login", json={
+        "email": "k.iyer@dealflow360.example", "password": "password123",
+    })
+    require_ok(resp, body, "finance login")
+    finance_headers = {"Authorization": f"Bearer {body['access_token']}"}
+    show("Logged in as", f"{body['user']['name']} ({body['user']['role']})")
+
     resp, body = call("POST", f"/approvals/{approval_id}/decision", json={
-        "action": "approve", "user": "K. Iyer", "user_id": 3,
-    }, headers=H)
+        "action": "approve",
+    }, headers=finance_headers)
     require_ok(resp, body, "finance approve")
     show("Stage after finance approves", body["stage"])
     assert body["stage"] == "confirmed"
@@ -185,16 +203,18 @@ def main() -> None:
         "Invoice auto-generated on approval; record a payment against it",
         "Quick Test Flow step 8",
     )
-    resp, invoices = call("GET", "/invoices", headers=H)
+    print("  Invoice/payment records are Finance's, not the rep's, to browse")
+    print("  now (PS section 3) -- using K. Iyer's session throughout.")
+    resp, invoices = call("GET", "/invoices", headers=finance_headers)
     require_ok(resp, invoices, "list invoices")
     invoice = next(i for i in invoices if i["quotation_id"] == quotation_id)
     show("Invoice", invoice)
 
     resp, body = call("POST", f"/invoices/{invoice['id']}/pay", json={
         "amount": invoice["amount"], "method": "bank_transfer",
-    }, headers=H)
+    }, headers=finance_headers)
     require_ok(resp, body, "pay invoice")
-    resp, body = call("GET", f"/invoices/{invoice['id']}", headers=H)
+    resp, body = call("GET", f"/invoices/{invoice['id']}", headers=finance_headers)
     show("Invoice status after payment", body["status"])
     assert body["status"] == "paid"
 
@@ -253,7 +273,7 @@ def main() -> None:
     show("Delivery slippage", len(health["delivery_slippage"]))
 
     resp, body = call("POST", f"/deal-health/{quotation_id}/nudge", json={
-        "user": "M. Shah", "note": "Checking in on this one",
+        "note": "Checking in on this one",
     }, headers=H)
     require_ok(resp, body, "nudge")
 
@@ -271,8 +291,8 @@ def main() -> None:
     resp, tiers = call("GET", "/discount-tiers", headers=H)
     require_ok(resp, tiers, "discount tiers")
     show("Discount tiers configured", [t["name"] for t in tiers])
-    resp, warehouses = call("GET", "/warehouses", headers=H)
-    require_ok(resp, warehouses, "warehouses")
+    resp, warehouses = call("GET", "/warehouses", headers=finance_headers)
+    require_ok(resp, warehouses, "warehouses (Finance/Admin-only read, PS section 3)")
     show("Warehouses configured", [w["name"] for w in warehouses])
     resp, report = call("GET", "/reports/summary", headers=H)
     require_ok(resp, report, "reports summary")

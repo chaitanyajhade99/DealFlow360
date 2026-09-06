@@ -71,9 +71,14 @@ async function request(path, { method = "GET", body, auth = "internal", signal }
     signal,
   });
 
-  if (response.status === 401 || response.status === 403) {
-    // Session is dead -- drop it so route guards bounce back to login
-    // instead of the app quietly showing empty screens forever.
+  if (response.status === 401) {
+    // 401 = the token itself is invalid/expired -- the session is dead, so
+    // drop it and let route guards bounce back to login. 403, by contrast,
+    // now routinely means "this valid, logged-in role just isn't allowed to
+    // read/write this particular resource" (RBAC — e.g. a Sales Rep hitting
+    // a Finance-only endpoint) -- that must surface as an ordinary error to
+    // handle locally, NOT silently log the user out of an otherwise-good
+    // session just because one call was outside their role.
     if (auth === "customer") clearCustomerSession();
     else if (auth === "internal") clearInternalSession();
   }
@@ -210,6 +215,12 @@ export async function submitQuotation(id) {
 export async function getUpsellSuggestions(quotationId) {
   return get(`/quotations/${quotationId}/upsell-suggestions`);
 }
+export async function getQuotationNegotiations(quotationId) {
+  return get(`/quotations/${quotationId}/negotiations`);
+}
+export async function respondToNegotiation(quotationId, negotiationId, action, note) {
+  return post(`/quotations/${quotationId}/negotiations/${negotiationId}/respond`, { action, note });
+}
 export async function downloadQuotationPdf(id) {
   const session = getInternalSession();
   const response = await fetch(`${API_BASE}/quotations/${id}/pdf`, {
@@ -227,6 +238,39 @@ export async function downloadQuotationPdf(id) {
   URL.revokeObjectURL(url);
 }
 
+// Opens the quotation PDF (with the Governance & Risk Review section, since
+// ?preview=true) in a new tab instead of downloading it -- used by the
+// Approval screen so a Sales Manager/Finance reviewer can sanity-check the
+// full document, flagged lines included, without leaving the approval flow.
+export async function previewQuotationPdf(id) {
+  const session = getInternalSession();
+  const response = await fetch(`${API_BASE}/quotations/${id}/pdf?preview=true`, {
+    headers: session?.token ? { Authorization: `Bearer ${session.token}` } : {},
+  });
+  if (!response.ok) throw new ApiError(response.status, "Could not generate PDF preview");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) throw new Error("Pop-up blocked — allow pop-ups to preview the PDF.");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+// Customer-portal equivalent -- same inline-preview behaviour, but hits the
+// ownership-checked /portal/quotations/{id}/pdf route with the customer JWT,
+// and the PDF has no internal governance/risk section (see build_quotation_pdf).
+export async function previewPortalQuotationPdf(id) {
+  const session = getCustomerSession();
+  const response = await fetch(`${API_BASE}/portal/quotations/${id}/pdf`, {
+    headers: session?.token ? { Authorization: `Bearer ${session.token}` } : {},
+  });
+  if (!response.ok) throw new ApiError(response.status, "Could not generate PDF preview");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) throw new Error("Pop-up blocked — allow pop-ups to preview the PDF.");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 // ---- Approvals ----
 export async function getApprovals(pendingOnly = false) {
   return get(`/approvals${qs({ pending_only: pendingOnly || undefined })}`);
@@ -236,18 +280,33 @@ export async function getApprovalDetail(id) {
   const quotation = await get(`/quotations/${approval.quotation_id}`);
   return { approval, quotation, lines: quotation.lines || [] };
 }
-export async function decideApproval(approvalId, action, note = "", user = "Current User") {
-  return post(`/approvals/${approvalId}/decision`, { action, note, user });
+export async function decideApproval(approvalId, action, note = "") {
+  return post(`/approvals/${approvalId}/decision`, { action, note });
 }
 
 // ---- Fulfillment ----
 export async function getFulfillmentDetail(quotationId) {
+  // GET /warehouses is Finance/Admin-only (PS section 3 gives warehouse
+  // fulfillment management to Finance, not the rep, who only reads
+  // fulfillment progress) -- a Sales Rep/Manager viewing this screen gets a
+  // 403 here, which is expected, not an error to surface; they just get an
+  // empty warehouses list and see the read-only split without override
+  // controls (see FulfillmentDetail.jsx's role check for that UI split).
   const [quotation, fulfillment, warehouses] = await Promise.all([
     get(`/quotations/${quotationId}`),
     get(`/fulfillment/${quotationId}`),
-    get("/warehouses"),
+    get("/warehouses").catch(() => []),
   ]);
   return { quotation, lines: quotation.lines || [], fulfillment, warehouses };
+}
+// lines: [{product_id, warehouse_id, qty}] -- one entry per (product, warehouse)
+// allocation. Real persisted override (PDF B6), validated server-side against
+// live stock and the quotation's own required quantities.
+export async function overrideFulfillment(quotationId, lines) {
+  return post(`/fulfillment/${quotationId}/override`, lines);
+}
+export async function resetFulfillment(quotationId) {
+  return post(`/fulfillment/${quotationId}/reset`, {});
 }
 
 // ---- Warehouses ----
@@ -342,6 +401,28 @@ export async function updateProduct(id, payload) {
 // ---- Reports ----
 export async function getReportSummary(params = {}) {
   return get(`/reports/summary${qs(params)}`);
+}
+async function _downloadReportFile(path, params, filename) {
+  const session = getInternalSession();
+  const response = await fetch(`${API_BASE}${path}${qs(params)}`, {
+    headers: session?.token ? { Authorization: `Bearer ${session.token}` } : {},
+  });
+  if (!response.ok) throw new ApiError(response.status, "Could not generate export");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+export async function exportReportPdf(params = {}) {
+  return _downloadReportFile("/reports/export.pdf", params, "dealflow360-report.pdf");
+}
+export async function exportReportXlsx(params = {}) {
+  return _downloadReportFile("/reports/export.xlsx", params, "dealflow360-report.xlsx");
 }
 
 // ---- Customer portal ----

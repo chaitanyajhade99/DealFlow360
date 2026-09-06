@@ -6,10 +6,10 @@ import {
   getPortalQuotationDetail,
   submitNegotiationRequest,
   confirmPortalQuotation,
+  previewPortalQuotationPdf,
 } from "../api/client";
 import DetailScreen from "../components/DetailScreen";
 import Panel from "../components/Panel";
-import StatusBadge from "../components/StatusBadge";
 import Skeleton from "../components/Skeleton";
 import { useToast } from "../context/ToastContext";
 import { code, lineTotal, money } from "../utils";
@@ -21,6 +21,27 @@ import { code, lineTotal, money } from "../utils";
 // quote reaches the customer with no chance to ever negotiate it. The
 // backend itself has no status restriction on POST .../negotiate.
 const NEGOTIABLE_STATUSES = ["draft", "pending_approval", "negotiation", "approved", "confirmed"];
+
+// PDF B8 defines exactly three customer-facing states: "Sent, Under
+// Negotiation, Confirmed" -- internal enum values like "pending_approval",
+// and internal risk vocabulary (LOW/MEDIUM/HIGH), belong to the workspace,
+// not this screen (PDF section 7: the portal "must be a real, separate,
+// restricted view, not just another internal screen with a different
+// label"). This maps every backend Quotation.status onto that customer
+// vocabulary so nothing internal leaks through here.
+const CUSTOMER_STATUS = {
+  draft: { label: "Sent", tone: "bg-slate-100 text-slate-700 border-slate-200" },
+  pending_approval: { label: "Under Review", tone: "bg-amber-50 text-amber-800 border-amber-200" },
+  returned: { label: "Under Review", tone: "bg-amber-50 text-amber-800 border-amber-200" },
+  approved: { label: "Under Review", tone: "bg-amber-50 text-amber-800 border-amber-200" },
+  negotiation: { label: "Under Negotiation", tone: "bg-indigo-50 text-indigo-800 border-indigo-200" },
+  confirmed: { label: "Confirmed", tone: "bg-emerald-50 text-emerald-800 border-emerald-200" },
+  rejected: { label: "Rejected", tone: "bg-rose-50 text-rose-800 border-rose-200" },
+};
+
+function customerStatus(status) {
+  return CUSTOMER_STATUS[status] || { label: "Sent", tone: "bg-slate-100 text-slate-700 border-slate-200" };
+}
 
 export default function PortalNegotiation() {
   const { quotationId } = useParams();
@@ -34,6 +55,7 @@ export default function PortalNegotiation() {
   const [submitting, setSubmitting] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [previewingPdf, setPreviewingPdf] = useState(false);
 
   useEffect(() => {
     getPortalQuotations().then(setAllQuotations).catch(() => setAllQuotations([]));
@@ -82,6 +104,16 @@ export default function PortalNegotiation() {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
+      for (const line of lines) {
+        if (counters[line.id] && Number(counters[line.id]) <= Number(line.discount_pct)) {
+          toast(
+            `${line.product_name || line.product_id}: a counter discount must be higher than the current ${line.discount_pct}% — that's the point of a counter-offer.`,
+            "warning"
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
       const requests = [];
       for (const line of lines) {
         if (comments[line.id] || counters[line.id]) {
@@ -112,6 +144,17 @@ export default function PortalNegotiation() {
     }
   };
 
+  const handlePreviewPdf = async () => {
+    setPreviewingPdf(true);
+    try {
+      await previewPortalQuotationPdf(quotation.id);
+    } catch (err) {
+      toast(err.message || "Could not open PDF preview.", "error");
+    } finally {
+      setPreviewingPdf(false);
+    }
+  };
+
   const handleConfirm = async () => {
     setConfirming(true);
     try {
@@ -120,7 +163,7 @@ export default function PortalNegotiation() {
         toast("Quotation confirmed! Order routed for fulfillment processing.", "success");
       } else {
         toast(
-          `Final terms exceeded thresholds — automatically routed back to approval (${approval.blended_risk} risk).`,
+          "These terms need a bit more review before they're finalized — your account team has been notified and will update you here.",
           "warning"
         );
       }
@@ -133,38 +176,45 @@ export default function PortalNegotiation() {
     }
   };
 
+  const status = customerStatus(quotation.status);
+
   return (
     <DetailScreen
       title={`Quotation ${code("Q", quotation.id)}`}
-      subtitle={`${quotation.customer_name} · Status: ${quotation.status.replaceAll("_", " ")}`}
-      actions={
-        isNegotiable
+      subtitle={`${quotation.customer_name} · Status: ${status.label}`}
+      actions={[
+        { label: previewingPdf ? "Opening..." : "Preview Quotation PDF", onClick: handlePreviewPdf },
+        ...(isNegotiable
           ? [
               { label: submitting ? "Sending..." : "Submit Request", onClick: handleSubmit },
               ...(quotation.status === "confirmed"
                 ? []
                 : [{ label: confirming ? "Confirming..." : "Confirm Quotation", primary: true, onClick: handleConfirm }]),
             ]
-          : []
-      }
+          : []),
+      ]}
       banner={{
-        title: `Status: ${quotation.status.replaceAll("_", " ")}`,
-        body: "If your final terms exceed approval thresholds, this quotation automatically re-enters the internal approval flow — no email back-and-forth needed.",
+        title: `Status: ${status.label}`,
+        body: "If your final terms exceed approval thresholds, this quotation automatically re-enters the approval flow — no email back-and-forth needed.",
       }}
     >
       {allQuotations.length > 1 && (
         <div className="flex flex-wrap gap-2">
-          {allQuotations.map((q) => (
-            <button
-              key={q.id}
-              onClick={() => navigate(`/portal/${q.id}`)}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-                q.id === quotation.id ? "border-indigo-400 bg-indigo-50 text-indigo-800" : "border-slate-200 bg-white text-slate-600"
-              }`}
-            >
-              {code("Q", q.id)} · <StatusBadge value={q.status} className="ml-1" />
-            </button>
-          ))}
+          {allQuotations.map((q) => {
+            const qStatus = customerStatus(q.status);
+            return (
+              <button
+                key={q.id}
+                onClick={() => navigate(`/portal/${q.id}`)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                  q.id === quotation.id ? "border-indigo-400 bg-indigo-50 text-indigo-800" : "border-slate-200 bg-white text-slate-600"
+                }`}
+              >
+                {code("Q", q.id)} ·{" "}
+                <span className={`df-badge ml-1 ${qStatus.tone}`}>{qStatus.label}</span>
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -210,8 +260,12 @@ export default function PortalNegotiation() {
                   />
                   <input
                     type="number"
+                    min={Number(l.discount_pct) + 0.1}
+                    max={100}
+                    step="0.1"
                     className="df-input text-xs"
-                    placeholder="Counter %"
+                    placeholder={`> ${l.discount_pct}%`}
+                    title={`Must be higher than the current ${l.discount_pct}% discount`}
                     value={counters[l.id] || ""}
                     onChange={(e) => setCounters((prev) => ({ ...prev, [l.id]: e.target.value }))}
                   />

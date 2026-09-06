@@ -5,7 +5,7 @@ router except /auth and /portal itself -- PDF A1: "after login, internal
 users can access backend configuration and open a sales workspace".
 """
 import jwt
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 from api.auth_utils import decode_token
 
@@ -36,3 +36,22 @@ def get_current_internal_user(authorization: str | None = Header(default=None)) 
     if payload.get("type") != "internal":
         raise HTTPException(status_code=403, detail="Not an internal user token")
     return payload
+
+
+def require_roles(*roles: str):
+    """Dependency factory enforcing PS section 3's per-role write access
+    (e.g. only Admin manages backend config; only Sales Manager/Finance
+    decide approvals). The role claim is already embedded in the JWT at
+    /auth/login (create_token includes "role"), so this needs no DB lookup.
+    Use on MUTATION endpoints only -- GET/list endpoints stay open to any
+    internal role so reps can still read products/warehouses/discount tiers
+    while building a quote.
+    """
+    def _check(user: dict = Depends(get_current_internal_user)) -> dict:
+        if user.get("role") not in roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Requires role: {' or '.join(roles)}",
+            )
+        return user
+    return _check

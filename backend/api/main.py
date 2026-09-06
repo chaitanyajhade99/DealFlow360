@@ -59,6 +59,8 @@ with engine.begin() as conn:
     # persisted before that change (both local and the shared Supabase DB).
     conn.execute(text("UPDATE price_lists SET currency = 'INR' WHERE currency = 'USD'"))
     conn.execute(text("ALTER TABLE customers ADD COLUMN IF NOT EXISTS status VARCHAR NOT NULL DEFAULT 'approved'"))
+    conn.execute(text("ALTER TABLE upsell_rules ADD COLUMN IF NOT EXISTS suggestion_type VARCHAR NOT NULL DEFAULT 'cross_sell'"))
+    conn.execute(text("ALTER TABLE fulfillment_splits ADD COLUMN IF NOT EXISTS is_manual_override BOOLEAN NOT NULL DEFAULT false"))
 
 # /auth and /portal issue tokens, so they stay open. Every other router is
 # internal-workspace-only (PDF A1: "after login, internal users can access

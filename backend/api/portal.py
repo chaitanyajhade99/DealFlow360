@@ -3,13 +3,14 @@ workspace per section 7's Technical Guidelines. Every route here requires a
 customer-type JWT (get_current_customer_user), never an internal one.
 """
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models import Customer, CustomerUser, Invoice, NegotiationRequest, Payment, Quotation, QuotationLine, get_db
 from api import payments
 from api.auth_utils import create_token, hash_password, verify_password
 from api.deps import get_current_customer_user
-from api.quotations import _attach_margins, _attach_product_names, score_and_route
+from api.quotations import _attach_margins, _attach_product_names, build_quotation_pdf, score_and_route
 from api.schemas import (
     ApprovalOut,
     CustomerOut,
@@ -84,10 +85,10 @@ def portal_signup(payload: CustomerSignupIn, db: Session = Depends(get_db)):
     is never self-selected, it's earned via api.tiering.recalc_customer_tier
     as the account's orders close.
     """
-    if db.query(CustomerUser).filter(CustomerUser.email == payload.email).first():
+    if db.query(CustomerUser).filter(func.lower(CustomerUser.email) == payload.email.lower()).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    customer = db.query(Customer).filter(Customer.name == payload.company_name).first()
+    customer = db.query(Customer).filter(func.lower(Customer.name) == payload.company_name.lower()).first()
     if not customer:
         customer = Customer(name=payload.company_name, default_tier="Bronze", status="pending")
         db.add(customer)
@@ -112,7 +113,7 @@ def portal_signup(payload: CustomerSignupIn, db: Session = Depends(get_db)):
 
 @router.post("/portal/login", response_model=PortalTokenOut)
 def portal_login(payload: PortalLoginIn, db: Session = Depends(get_db)):
-    cu = db.query(CustomerUser).filter(CustomerUser.email == payload.email).first()
+    cu = db.query(CustomerUser).filter(func.lower(CustomerUser.email) == payload.email.lower()).first()
     if not cu or not cu.password_hash or not verify_password(payload.password, cu.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     customer = db.get(Customer, cu.customer_id)
@@ -126,7 +127,7 @@ def portal_login(payload: PortalLoginIn, db: Session = Depends(get_db)):
 
 @router.post("/portal/magic-link", response_model=PortalMagicLinkOut)
 def request_magic_link(payload: PortalMagicLinkIn, db: Session = Depends(get_db)):
-    cu = db.query(CustomerUser).filter(CustomerUser.email == payload.email).first()
+    cu = db.query(CustomerUser).filter(func.lower(CustomerUser.email) == payload.email.lower()).first()
     if not cu:
         raise HTTPException(status_code=404, detail="No portal account for this email")
     token = create_token({"sub": str(cu.id), "customer_id": cu.customer_id, "type": "customer"}, expiry_hours=1)
@@ -181,6 +182,20 @@ def portal_get_quotation(
     return quotation
 
 
+@router.get("/portal/quotations/{quotation_id}/pdf")
+def portal_quotation_pdf(
+    quotation_id: int, db: Session = Depends(get_db), customer=Depends(get_current_customer_user)
+):
+    """Customer-facing PDF preview/download of their own quotation --
+    ownership-checked exactly like every other /portal/* route. Reuses the
+    same builder as the internal export but with include_governance=False:
+    internal risk scoring and reviewer notes stay workspace-only.
+    """
+    account = _customer_or_404(db, customer)
+    quotation = _owned_quotation_or_404(db, quotation_id, account)
+    return build_quotation_pdf(db, quotation, preview=True, include_governance=False)
+
+
 @router.post("/portal/quotations/{quotation_id}/negotiate", response_model=NegotiationRequestOut)
 def submit_negotiation(
     quotation_id: int, payload: NegotiationRequestIn,
@@ -188,6 +203,20 @@ def submit_negotiation(
 ):
     account = _customer_or_404(db, customer)
     quotation = _owned_quotation_or_404(db, quotation_id, account)
+
+    if payload.counter_discount_pct is not None:
+        # A "counter" that isn't actually higher than what's already on the
+        # quote isn't a counter-offer -- enforced here too, not just in the
+        # UI, since this endpoint takes a customer JWT directly and nothing
+        # else stops a scripted request from sending a lower/equal value.
+        line = db.get(QuotationLine, payload.quotation_line_id) if payload.quotation_line_id else None
+        if line and line.quotation_id == quotation_id and float(payload.counter_discount_pct) <= float(line.discount_pct):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Counter discount must be higher than the current {line.discount_pct}% on this line.",
+            )
+        if float(payload.counter_discount_pct) > 100:
+            raise HTTPException(status_code=400, detail="Counter discount cannot exceed 100%.")
 
     negotiation = NegotiationRequest(
         quotation_id=quotation_id,
@@ -284,6 +313,16 @@ def portal_verify_razorpay_payment(
 
     if not payments.verify_signature(payload.razorpay_order_id, payload.razorpay_payment_id, payload.razorpay_signature):
         raise HTTPException(status_code=400, detail="Payment signature verification failed")
+
+    # Row lock + already-paid guard: without this, a double-click on "Pay
+    # Now" (which creates two Razorpay orders before either verifies, since
+    # portal_create_razorpay_order's own already-paid check only runs at
+    # order-creation time) could verify twice and insert two Payment rows
+    # against the same invoice. Same race-safety approach as the internal
+    # Finance reconciliation endpoint (api/invoices.py::record_payment).
+    invoice = db.query(Invoice).filter(Invoice.id == invoice.id).with_for_update().first()
+    if invoice.status == "paid":
+        raise HTTPException(status_code=400, detail="This invoice is already paid")
 
     payment = Payment(invoice_id=invoice.id, amount=invoice.amount, method="razorpay")
     db.add(payment)

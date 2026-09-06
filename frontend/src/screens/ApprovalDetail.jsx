@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { CheckCircle2, X } from "lucide-react";
-import { getApprovalDetail, decideApproval } from "../api/client";
+import { getApprovalDetail, decideApproval, previewQuotationPdf } from "../api/client";
 import DetailScreen from "../components/DetailScreen";
 import Panel from "../components/Panel";
 import StatusStepper from "../components/StatusStepper";
@@ -28,6 +28,7 @@ export default function ApprovalDetail() {
   const [decisionFeedback, setDecisionFeedback] = useState(null);
   const [pendingAction, setPendingAction] = useState(null); // "approve" | "return" | "reject" | null
   const [noteDraft, setNoteDraft] = useState("");
+  const [previewingPdf, setPreviewingPdf] = useState(false);
 
   const load = () => getApprovalDetail(id).then(setData);
 
@@ -56,6 +57,17 @@ export default function ApprovalDetail() {
       ? 3
       : 0;
 
+  const handlePreviewPdf = async () => {
+    setPreviewingPdf(true);
+    try {
+      await previewQuotationPdf(data.quotation.id);
+    } catch (err) {
+      toast(err.message || "Could not open PDF preview.", "error");
+    } finally {
+      setPreviewingPdf(false);
+    }
+  };
+
   const openDecisionModal = (action) => {
     setNoteDraft(DEFAULT_NOTES[action]);
     setPendingAction(action);
@@ -66,7 +78,7 @@ export default function ApprovalDetail() {
     const note = noteDraft.trim() || DEFAULT_NOTES[action];
     setDeciding(true);
     try {
-      const updated = await decideApproval(data.approval.id, action, note, "Current User");
+      const updated = await decideApproval(data.approval.id, action, note);
       setData((prev) => ({ ...prev, approval: updated }));
       setDecisionFeedback({ action, note, timestamp: new Date().toLocaleTimeString(), nextStage: updated.stage });
       setPendingAction(null);
@@ -101,8 +113,12 @@ export default function ApprovalDetail() {
     <DetailScreen
       title={`Approval Review · ${code("A", data.approval.id)}`}
       subtitle={`Quotation ${code("Q", data.quotation.id)} · ${data.quotation.customer_name} · ${data.quotation.customer_tier} Tier`}
-      actions={
-        resolved
+      actions={[
+        {
+          label: previewingPdf ? "Opening..." : "Preview Quotation PDF",
+          onClick: handlePreviewPdf,
+        },
+        ...(resolved
           ? data.approval.stage === "returned"
             ? [
                 {
@@ -116,8 +132,8 @@ export default function ApprovalDetail() {
               { label: "Approve", variant: "success", onClick: () => openDecisionModal("approve") },
               { label: "Return for Revision", onClick: () => openDecisionModal("return") },
               { label: "Reject", variant: "danger", onClick: () => openDecisionModal("reject") },
-            ]
-      }
+            ]),
+      ]}
       banner={{
         title: `${data.approval.blended_risk} Blended Risk Governance:`,
         body: resolved

@@ -1,6 +1,85 @@
+## Production-readiness pass -- 2026-09-06
+
+Full audit + fix cycle against the PS/Excalidraw. Summary (see inline changelogs
+at each affected entity/endpoint for detail):
+
+- **RBAC enforced server-side, not just hidden in the frontend.** Added
+  `api.deps.require_roles()`. `POST/PATCH /products`, `/discount-tiers`,
+  `/warehouses`, `/subscription-plans` are now Admin-only (discount-tiers also
+  allows Sales Manager, per PS section 3 giving both roles that
+  responsibility). `POST /approvals/{id}/decision` now requires
+  `sales_manager`/`admin` at the sales_manager stage and `finance`/`admin` at
+  the finance stage -- a Sales Rep can no longer approve their own quotation.
+  `POST /invoices/{id}/pay` is Finance/Admin-only.
+- **State-machine integrity**: `PATCH /quotations/{id}/lines` now rejects
+  (400) editing a quotation whose status isn't `draft`/`negotiation` --
+  previously a confirmed/approved quotation (with an invoice already raised
+  off its numbers) could still be silently rewritten via direct API call.
+  `POST /approvals/{id}/decision` also now rejects re-deciding an
+  already-resolved approval (blocks a double-click/replay double-processing
+  the same decision).
+- **Payment integrity**: both the Finance manual-reconciliation endpoint and
+  the customer Razorpay-verify endpoint now row-lock the invoice
+  (`SELECT ... FOR UPDATE`) and reject a) paying an already-`paid` invoice,
+  b) a non-positive amount, c) an amount exceeding the remaining balance --
+  closing a real double-payment/overpayment race.
+- **Hybrid billing wired for real (PDF B7)**: confirming/approving a
+  quotation with Subscription-category lines now creates an actual
+  `Subscription` row (correct cycle, recurring amount, next bill date) via
+  `_create_subscriptions_if_needed()`, called from the same
+  `create_invoice_if_needed()` choke point both auto-confirm and
+  manager/finance-cleared approval already funnel through. The one-time
+  invoice total now excludes Subscription-category lines (previously they
+  were double-counted: once in the flat invoice, and never in any recurring
+  record at all, since nothing ever created one).
+- **Price Lists actually applied (PDF A2)**: `_resolve_unit_price()` now
+  checks for a tier-specific `PriceList` override (`fixed` or `markup_pct`)
+  before falling back to `Product.price`. Previously this table was
+  write-only -- configurable in the admin screen but never read.
+- **Fulfillment Manual Override implemented (PDF B6)**: previously a
+  frontend-only local preview with an honest "no write endpoint" disclaimer.
+  See `POST/GET/reset /fulfillment/{quotation_id}` below.
+- **ML risk-escalation layer activated**: `xgboost` and `openpyxl` were
+  missing from the environment entirely (not even in `requirements.txt`), so
+  `engines/risk_engine.py`'s trained model artifact silently never loaded and
+  every score was rules-only. Both are now installed and declared; the model
+  layer is confirmed live (`model_available: true`).
+- **Reports export (PDF/XLS) implemented** -- `GET /reports/export.pdf` and
+  `GET /reports/export.xlsx`, sharing the exact filter/aggregation function
+  `GET /reports/summary` itself uses, so the downloaded file and the on-screen
+  numbers can never drift apart.
+- **New automated test suite**: `backend/tests/test_production_readiness.py`
+  (23 tests, `pytest`) -- there was no API-level test coverage before this
+  pass, only the pure-function `engines/tests/` suite (106 tests, untouched,
+  still green). Runs against the real configured DB, not an isolated test
+  DB; see the file's own docstring for that tradeoff.
+- **Read-access RBAC, not just mutations**: a first pass gated only writes
+  (config, approvals, payments). On review, PS section 3 explicitly assigns
+  warehouse fulfillment management and billing reconciliation to
+  Finance/Operations, not the Sales Rep -- so `GET /warehouses`,
+  `GET /invoices`, `GET /invoices/{id}` are now Finance/Admin-only reads too,
+  and `POST /fulfillment/{id}/override|reset` (added earlier in this same
+  pass) moved from open-to-any-internal-role to Finance/Admin-only, matching
+  that same assignment. `GET /fulfillment/{id}` itself stays open to every
+  internal role -- a rep "tracks fulfillment progress" (PS section 3), which
+  is read access, just not the override decision.
+- **Fixed a latent session bug this surfaced**: the frontend's `request()`
+  helper treated any `403` exactly like a `401` and cleared the entire
+  session -- meaning a Sales Rep merely viewing a screen that makes one
+  now-role-gated call (e.g. Fulfillment fetching `/warehouses`) would have
+  been silently logged out. `403` now surfaces as an ordinary per-call error;
+  only `401` (an actually-invalid/expired token) drops the session.
+
 ## Entities
 - Quotation: id, customer_name, customer_tier, status, created_at, sales_rep_id (nullable FK -> users.id, added 2026-09-05), expected_delivery_date (nullable, added 2026-09-05), actual_delivery_date (nullable, added 2026-09-05)
 - QuotationLine: id, quotation_id, product_id, category, qty, unit_price, discount_pct, category_limit_pct
+  <!-- Changelog 2026-09-06: unit_price and category are now server-resolved from the
+       matching Product record on POST /quotations and PATCH /quotations/{id}/lines --
+       whatever the client sends for these two fields is discarded, not persisted. Per
+       PDF A2/B3, price is backend-configured (price lists), and the rep's only lever
+       on a line is qty/discount_pct; trusting a client-sent unit_price would let a rep
+       dodge the blended discount risk engine entirely by lowering "price" instead of
+       taking a discount that would trigger approval. -->
 - Approval: id, quotation_id, blended_risk (LOW/MEDIUM/HIGH), stage, assigned_to, history[], flagged_lines[] (added 2026-09-05)
   <!-- history[] entries now include a {"action": "flagged", "reason": ...} entry from
        score_risk()'s "reason" field, appended on every POST /quotations/{id}/submit.
@@ -32,7 +111,7 @@
 - ProductVariant: id, product_id, attribute, value, extra_price
 - PriceList: id, product_id, customer_tier, currency, price_rule (json)
 - SubscriptionPlan: id, name, cycle, proration_rule (json), cancellation_rule (json)
-- UpsellRule: id, source_product_id, suggested_product_id, is_promoted, min_margin_pct
+- UpsellRule: id, source_product_id, suggested_product_id, is_promoted, min_margin_pct, suggestion_type ("upsell" | "cross_sell", default "cross_sell", added 2026-09-06 -- see DATABASE_SCHEMA.md #16)
 - AuditLog: id, entity_type, entity_id, user_id (nullable), action, reason (nullable), before (json), after (json), created_at
 - Payment: id, invoice_id, amount, method, paid_at
 - CreditNote: id, subscription_id (nullable), invoice_id (nullable), amount, reason, created_at
@@ -117,6 +196,23 @@ PATCH /quotations/{id}/lines          -> category_limit_pct optional (auto-fille
 POST /quotations/{id}/submit          -> calls engines.score_risk() with context (see below);
                                           result["reason"] appended into Approval.history;
                                           auto-creates an Invoice if no approval was needed
+GET /quotations/{id}/negotiations     -> added 2026-09-06; every NegotiationRequest for this
+                                          quotation, newest first. Backs a rep-facing panel --
+                                          previously a submitted negotiation only surfaced as a
+                                          line in the dashboard's generic activity feed, with no
+                                          screen where the rep could see the actual message/
+                                          counter or act on it (gap vs PDF section 3: "Sales
+                                          Rep ... Responds to customer negotiation requests").
+POST /quotations/{id}/negotiations/{negotiation_id}/respond -> added 2026-09-06.
+                                          {action: "accept"|"decline", note?}. "accept" applies
+                                          counter_discount_pct to its line and re-runs
+                                          score_and_route() -- same path as the customer's own
+                                          "Confirm Quotation", so a rep-accepted counter is held
+                                          to the same approval thresholds and can itself route
+                                          to Sales Manager/Finance if it's now too aggressive.
+                                          "decline" resolves the request with no pricing change
+                                          and drops the quotation back to "draft" once no other
+                                          negotiation request is still pending on it.
 GET /quotations/{id}/upsell-suggestions -> calls engines.recommend_upsell() (PDF B5).
                                           Fixed 2026-09-06: this route used to pass the
                                           engine no real "margin" key (only an unused
@@ -130,7 +226,19 @@ GET /quotations/{id}/upsell-suggestions -> calls engines.recommend_upsell() (PDF
 GET /quotations/{id}/pdf              -> added 2026-09-05; streams a generated PDF
                                           (application/pdf) of the quotation's line items,
                                           discounts, and total -- built with reportlab,
-                                          not persisted/cached
+                                          not persisted/cached.
+                                          Query param `preview` (bool, default false, added
+                                          2026-09-06): when true, Content-Disposition is
+                                          "inline" instead of "attachment" (opens in-browser
+                                          instead of downloading), and the PDF gains a
+                                          "Governance & Risk Review" section built from the
+                                          quotation's latest Approval -- blended_risk, stage,
+                                          the same flagged-lines breakdown shown on the
+                                          Approval screen, and reviewer notes from
+                                          approval.history. Lets a Sales Manager/Finance
+                                          reviewer open one document that shows both the full
+                                          quotation and why it was flagged, instead of
+                                          cross-referencing two screens.
 
 ### Approvals
 GET /approvals                        -> added 2026-09-05; ?pending_only=true filters to
@@ -139,7 +247,17 @@ GET /approvals/{id}                   -> added 2026-09-05; includes flagged_line
                                           (screen 6's "Why This Quote Was Flagged" table)
 POST /approvals/{id}/decision         -> approve/reject/return; auto-creates an Invoice
                                           when the chain fully clears; now also writes an
-                                          AuditLog "approval" entry (added 2026-09-05)
+                                          AuditLog "approval" entry (added 2026-09-05).
+                                          Changelog 2026-09-06: the reviewer recorded in
+                                          history/AuditLog is now resolved server-side from
+                                          the caller's JWT (api.deps.get_current_internal_user),
+                                          not the request body -- the request no longer takes
+                                          `user`/`user_id` at all. Previously the frontend sent
+                                          a hardcoded literal "Current User" string for every
+                                          decision regardless of who was actually logged in,
+                                          and nothing stopped a client from claiming to be
+                                          anyone. Same fix applied to POST
+                                          /deal-health/{id}/nudge and /escalate below.
 
 ### Quotation integrity -- added 2026-09-06
 <!-- POST /quotations and PATCH /quotations/{id}/lines both now reject a
@@ -148,7 +266,26 @@ POST /approvals/{id}/decision         -> approve/reject/return; auto-creates an 
      quotation (or an edit) with an empty cart silently persisted. -->
 
 ### Fulfillment
-GET /fulfillment/{quotation_id}       -> calls engines.split_warehouse()
+GET /fulfillment/{quotation_id}       -> calls engines.split_warehouse(). Changelog
+                                          2026-09-06: no longer unconditionally recomputes/
+                                          overwrites splits -- if FulfillmentSplit.is_manual_override
+                                          is true (see POST .../override below), the persisted
+                                          split is returned as-is with backorders recomputed
+                                          against it, instead of being silently clobbered by a
+                                          fresh auto-suggestion on every GET.
+POST /fulfillment/{quotation_id}/override -> added 2026-09-06. PDF B6's "Manual Override",
+                                          previously a frontend-only local preview with no
+                                          write endpoint. Body: list of
+                                          {product_id, warehouse_id, qty}. Validates every
+                                          allocation against that warehouse's real live stock
+                                          and rejects allocating more than a line's own
+                                          required qty (400 either way); under-allocating a
+                                          line is allowed and produces a real backorder entry,
+                                          same shape as the auto engine's. Persists with
+                                          is_manual_override=true.
+POST /fulfillment/{quotation_id}/reset -> added 2026-09-06. "Accept Suggested Split" --
+                                          clears is_manual_override so the next GET goes back
+                                          to the live auto-allocation engine.
 
 ### Auth (internal users) -- added 2026-09-05
 POST /auth/signup                     -> role must be sales_rep/sales_manager/finance (admin
@@ -218,11 +355,25 @@ GET /portal/quotations/{id}           -> restricted read; same margin/product_na
                                           quotation's customer_name doesn't match the caller's
                                           account -- previously any valid customer token could
                                           read/negotiate on any quotation by guessing an id
-POST /portal/quotations/{id}/negotiate -> creates a NegotiationRequest, sets status "negotiation"
+POST /portal/quotations/{id}/negotiate -> creates a NegotiationRequest, sets status "negotiation".
+                                          Changelog 2026-09-06: when counter_discount_pct is
+                                          sent, it's rejected (400) unless it's strictly higher
+                                          than that line's current discount_pct (and <=100) --
+                                          enforced server-side, not just in the UI, since this
+                                          is a customer-JWT route a scripted request could hit
+                                          directly. A counter that isn't higher than what's
+                                          already offered isn't a counter-offer.
 POST /portal/quotations/{id}/confirm  -> applies the latest pending counter_discount_pct to
                                           its line, then re-runs the same scoring path as
                                           POST /quotations/{id}/submit -- if final terms
                                           exceed thresholds it re-enters approval automatically
+GET /portal/quotations/{id}/pdf       -> added 2026-09-06; customer-facing equivalent of
+                                          GET /quotations/{id}/pdf, ownership-checked. Always
+                                          opens inline (preview). Shares build_quotation_pdf()
+                                          with the internal route but with
+                                          include_governance=False -- the internal risk-score/
+                                          flagged-lines/reviewer-notes section never appears on
+                                          a customer's copy.
 GET /portal/invoices                  -> added 2026-09-06; every invoice raised against this
                                           account's own quotations
 GET /portal/invoices/{id}             -> added 2026-09-06; ownership-checked like quotations

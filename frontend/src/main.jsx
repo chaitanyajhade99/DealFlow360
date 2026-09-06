@@ -6,6 +6,7 @@ import { ToastProvider } from "./context/ToastContext";
 import { RoleProvider } from "./context/RoleContext";
 import InternalRouteGuard from "./components/InternalRouteGuard";
 import AdminRouteGuard from "./components/AdminRouteGuard";
+import RoleRouteGuard from "./components/RoleRouteGuard";
 import PortalRouteGuard from "./components/PortalRouteGuard";
 import Login from "./screens/Login";
 import Dashboard from "./screens/Dashboard";
@@ -52,8 +53,14 @@ function App() {
           <Route path="fulfillment/:id" element={<FulfillmentDetail />} />
           <Route path="subscriptions" element={<SubscriptionsList />} />
           <Route path="billing/:id" element={<BillingDetail />} />
-          <Route path="invoices" element={<InvoicesList />} />
-          <Route path="invoices/:id" element={<InvoiceDetail />} />
+          <Route
+            path="invoices"
+            element={<RoleRouteGuard allow={["finance", "admin"]}><InvoicesList /></RoleRouteGuard>}
+          />
+          <Route
+            path="invoices/:id"
+            element={<RoleRouteGuard allow={["finance", "admin"]}><InvoiceDetail /></RoleRouteGuard>}
+          />
           <Route path="deal-health" element={<DealHealth />} />
           <Route path="reports" element={<Reports />} />
           
