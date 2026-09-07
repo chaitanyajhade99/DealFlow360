@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, JSON, Numeric, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, Numeric, String, func
 from sqlalchemy.orm import relationship
 
 from models.database import Base
@@ -31,3 +31,24 @@ class FulfillmentSplit(Base):
     is_manual_override = Column(Boolean, nullable=False, default=False, server_default="false")
 
     quotation = relationship("Quotation", back_populates="fulfillment_splits")
+
+
+class Backorder(Base):
+    """A persisted, cross-quotation-queryable record of a fulfillment
+    shortfall -- FulfillmentSplit's own `splits` JSON already carries a
+    transient backorder row for whatever a single GET /fulfillment/{id}
+    computes, but that's only ever visible one quotation at a time and
+    disappears on recompute. This table is what a Finance/Operations "open
+    backorders" report (across every quotation) and a warehouse restock's
+    auto-resolution attempt (api/warehouses.py) both need: something that
+    still exists after the page that created it is closed.
+    """
+    __tablename__ = "backorders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    quotation_id = Column(Integer, ForeignKey("quotations.id"), nullable=False)
+    product_id = Column(String, nullable=False)
+    qty = Column(Integer, nullable=False)
+    status = Column(String, nullable=False, default="open")  # open | resolved
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    resolved_at = Column(DateTime(timezone=True), nullable=True)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Info } from "lucide-react";
+import { Info, FileText } from "lucide-react";
 import {
   getPortalQuotations,
   getPortalQuotationDetail,
@@ -57,8 +57,13 @@ export default function PortalNegotiation() {
   const [loading, setLoading] = useState(true);
   const [previewingPdf, setPreviewingPdf] = useState(false);
 
+  const [quotationsLoaded, setQuotationsLoaded] = useState(false);
+
   useEffect(() => {
-    getPortalQuotations().then(setAllQuotations).catch(() => setAllQuotations([]));
+    getPortalQuotations()
+      .then(setAllQuotations)
+      .catch(() => setAllQuotations([]))
+      .finally(() => setQuotationsLoaded(true));
   }, []);
 
   const activeId =
@@ -67,8 +72,14 @@ export default function PortalNegotiation() {
     allQuotations[0]?.id;
 
   useEffect(() => {
+    // Nothing to fetch a detail for once the account's quotation list has
+    // come back empty -- without this early return, `loading` never flips
+    // to false (only the detail fetch below ever clears it), so the screen
+    // was stuck on the loading skeleton forever instead of showing an
+    // empty state.
+    if (!quotationsLoaded) return;
     if (!activeId) {
-      if (allQuotations.length === 0 && !loading) return;
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -77,12 +88,19 @@ export default function PortalNegotiation() {
       setLoading(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, allQuotations.length]);
+  }, [activeId, quotationsLoaded]);
 
-  if (allQuotations.length === 0 && !loading) {
+  if (quotationsLoaded && allQuotations.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-        No quotations found for your account yet.
+      <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-12 text-center animate-fade-slide-in">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 mb-3">
+          <FileText className="h-6 w-6 text-slate-400" aria-hidden="true" />
+        </div>
+        <p className="text-sm font-bold text-slate-700">No quotations yet</p>
+        <p className="mt-1 max-w-sm text-xs text-slate-500">
+          Your account team hasn't sent you a quotation yet. Once your sales rep
+          builds one, it will appear here for you to review, negotiate, or confirm.
+        </p>
       </div>
     );
   }

@@ -2,7 +2,7 @@
 from datetime import date, datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---- Quotation ----
@@ -12,7 +12,7 @@ class QuotationLineIn(BaseModel):
     category: str
     qty: int
     unit_price: float
-    discount_pct: float = 0
+    discount_pct: float = Field(default=0, ge=0, le=100)
     # Optional: auto-filled from the quotation's DiscountTier.category_limits
     # (by category) when omitted. Pass explicitly to override.
     category_limit_pct: Optional[float] = None
@@ -89,6 +89,18 @@ class FulfillmentSplitOut(BaseModel):
     # Transient, not persisted to fulfillment_splits.splits — see api/fulfillment.py
     backorders: list[dict[str, Any]] = []
     is_manual_override: bool = False
+
+
+class BackorderOut(BaseModel):
+    """Cross-quotation view of an open shortfall -- see models.Backorder."""
+    id: int
+    quotation_id: int
+    product_id: str
+    qty: int
+    status: str
+    created_at: datetime
+    customer_name: Optional[str] = None
+    quotation_status: Optional[str] = None
 
 
 class ManualFulfillmentLineIn(BaseModel):
@@ -284,7 +296,7 @@ class PortalMeOut(BaseModel):
 
 class NegotiationRequestIn(BaseModel):
     message: Optional[str] = None
-    counter_discount_pct: Optional[float] = None
+    counter_discount_pct: Optional[float] = Field(default=None, ge=0, le=100)
     quotation_line_id: Optional[int] = None
 
 
@@ -319,6 +331,15 @@ class WarehouseIn(BaseModel):
 class WarehouseOut(WarehouseIn):
     model_config = ConfigDict(from_attributes=True)
     id: int
+
+
+class RestockIn(BaseModel):
+    """A positive delta to receive into stock, distinct from the raw
+    overwrite PATCH /warehouses/{id} does -- this is an auditable "goods
+    received" action that also tries to resolve any open backorders on the
+    product it just added stock for (see api/warehouses.py)."""
+    product_id: str
+    qty: int = Field(gt=0)
 
 
 # ---- Product ----

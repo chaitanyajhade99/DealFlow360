@@ -83,9 +83,11 @@ export default function QuotationsList() {
           ]}
           activeFilter={filter}
           onFilterChange={setFilter}
+          searchable
+          searchPlaceholder="Search by customer or ID…"
           action={
             <button
-              className="df-btn-primary"
+              className="qit-btn-primary"
               onClick={() => navigate("/app/quotations/new")}
               aria-label="Create new quotation"
             >
@@ -135,7 +137,7 @@ export default function QuotationsList() {
               <p className="mt-1 text-xs text-slate-500">Visual stage progression of customer deals.</p>
             </div>
             <button
-              className="df-btn-primary"
+              className="qit-btn-primary"
               onClick={() => navigate("/app/quotations/new")}
               aria-label="Create new quotation"
             >

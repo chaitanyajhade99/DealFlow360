@@ -319,6 +319,16 @@ export async function createWarehouse(payload) {
 export async function updateWarehouse(id, payload) {
   return patch(`/warehouses/${id}`, payload);
 }
+// Adds to whatever's already on hand (unlike updateWarehouse's raw
+// overwrite) and tries to auto-resolve any open backorders on this product.
+export async function restockWarehouse(id, productId, qty) {
+  return post(`/warehouses/${id}/restock`, { product_id: productId, qty });
+}
+
+// ---- Backorders ----
+export async function getBackorders() {
+  return get("/backorders");
+}
 
 // ---- Subscriptions ----
 export async function getSubscriptions(params = {}) {

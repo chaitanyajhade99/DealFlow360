@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from models import (
-    Approval, FulfillmentSplit, Invoice, Payment, Quotation, QuotationLine, Subscription, get_db,
+    Approval, Backorder, FulfillmentSplit, Invoice, Payment, Quotation, QuotationLine, Subscription, Warehouse, get_db,
 )
 
 client = TestClient(app)
@@ -71,6 +71,7 @@ def _cleanup_quotation(db, quotation_id):
         db.query(Payment).filter(Payment.invoice_id.in_(invoice_ids)).delete(synchronize_session=False)
     db.query(Invoice).filter(Invoice.quotation_id == quotation_id).delete()
     db.query(FulfillmentSplit).filter(FulfillmentSplit.quotation_id == quotation_id).delete()
+    db.query(Backorder).filter(Backorder.quotation_id == quotation_id).delete()
     db.query(Approval).filter(Approval.quotation_id == quotation_id).delete()
     db.query(QuotationLine).filter(QuotationLine.quotation_id == quotation_id).delete()
     db.query(Quotation).filter(Quotation.id == quotation_id).delete()
@@ -277,6 +278,34 @@ class TestPriceListResolution:
         _cleanup_quotation(db, qid)
 
 
+class TestDiscountBounds:
+    """discount_pct/counter_discount_pct had no upper bound at all -- a >100%
+    discount pushes net_price negative and corrupts totals, margin, and the
+    risk score. Bounded to [0, 100] at the schema layer, which covers line
+    creation, line updates, and negotiation counters (all share this schema).
+    """
+
+    def test_over_100_pct_line_discount_rejected(self, rep_token):
+        resp = client.post(
+            "/quotations", headers=_auth(rep_token),
+            json={
+                "customer_name": "Globex Manufacturing", "customer_tier": "Gold",
+                "lines": [{"product_id": "LAPTOP-PRO-14", "category": "Hardware", "qty": 1, "unit_price": 1, "discount_pct": 150}],
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_negative_line_discount_rejected(self, rep_token):
+        resp = client.post(
+            "/quotations", headers=_auth(rep_token),
+            json={
+                "customer_name": "Globex Manufacturing", "customer_tier": "Gold",
+                "lines": [{"product_id": "LAPTOP-PRO-14", "category": "Hardware", "qty": 1, "unit_price": 1, "discount_pct": -10}],
+            },
+        )
+        assert resp.status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # Payment integrity
 # ---------------------------------------------------------------------------
@@ -392,3 +421,151 @@ class TestFulfillmentOverride:
         reset = client.post(f"/fulfillment/{qid}/reset", headers=_auth(finance_token))
         assert reset.status_code == 200
         assert reset.json()["is_manual_override"] is False
+
+
+# ---------------------------------------------------------------------------
+# Cross-quotation stock reservation (no double-allocation) + backorder
+# persistence/restock resolution
+# ---------------------------------------------------------------------------
+
+class TestDoubleAllocationPrevention:
+    """Warehouse.stock was never checked against what other quotations had
+    already been allocated -- two orders could be handed the same physical
+    units out of one warehouse. Fixed via a reservation-aware "available"
+    calculation (raw stock minus every OTHER quotation's persisted split).
+    """
+
+    @staticmethod
+    def _available(db, warehouse_id, product_id):
+        from api.fulfillment import _reserved_by_others, _warehouse_stock
+        warehouse = db.get(Warehouse, warehouse_id)
+        reserved = _reserved_by_others(db, quotation_id=-1)  # no real quotation -- counts every split
+        return _warehouse_stock(warehouse, product_id) - reserved.get((warehouse_id, product_id), 0)
+
+    def test_second_quotation_cannot_claim_units_already_allocated(self, db, rep_token, finance_token):
+        available = self._available(db, 1, "LAPTOP-PRO-14")
+        assert available >= 1, "warehouse 1 has no spare LAPTOP-PRO-14 to run this test against"
+
+        qid_a = client.post(
+            "/quotations", headers=_auth(rep_token),
+            json={
+                "customer_name": "Delta LLC", "customer_tier": "Bronze",
+                "lines": [{"product_id": "LAPTOP-PRO-14", "category": "Hardware", "qty": available, "unit_price": 1, "discount_pct": 0}],
+            },
+        ).json()["id"]
+        qid_b = client.post(
+            "/quotations", headers=_auth(rep_token),
+            json={
+                "customer_name": "Delta LLC", "customer_tier": "Bronze",
+                "lines": [{"product_id": "LAPTOP-PRO-14", "category": "Hardware", "qty": 1, "unit_price": 1, "discount_pct": 0}],
+            },
+        ).json()["id"]
+        try:
+            claim_all = client.post(
+                f"/fulfillment/{qid_a}/override", headers=_auth(finance_token),
+                json=[{"product_id": "LAPTOP-PRO-14", "warehouse_id": 1, "qty": available}],
+            )
+            assert claim_all.status_code == 200, claim_all.text
+
+            # Every spare unit is now claimed by quotation A -- B must not be
+            # allowed to claim any of the same physical stock too.
+            blocked = client.post(
+                f"/fulfillment/{qid_b}/override", headers=_auth(finance_token),
+                json=[{"product_id": "LAPTOP-PRO-14", "warehouse_id": 1, "qty": 1}],
+            )
+            assert blocked.status_code == 400
+            assert "0 unit" in blocked.json()["detail"]
+        finally:
+            _cleanup_quotation(db, qid_a)
+            _cleanup_quotation(db, qid_b)
+
+
+class TestBackorderPersistence:
+    def test_open_backorder_appears_in_report_and_clears_when_resolved(self, db, rep_token, finance_token):
+        qid = client.post(
+            "/quotations", headers=_auth(rep_token),
+            json={
+                "customer_name": "Delta LLC", "customer_tier": "Bronze",
+                "lines": [{"product_id": "LAPTOP-PRO-14", "category": "Hardware", "qty": 3, "unit_price": 1, "discount_pct": 0}],
+            },
+        ).json()["id"]
+        try:
+            override = client.post(
+                f"/fulfillment/{qid}/override", headers=_auth(finance_token),
+                json=[{"product_id": "LAPTOP-PRO-14", "warehouse_id": 1, "qty": 1}],
+            )
+            assert override.status_code == 200, override.text
+            assert override.json()["backorders"][0]["qty"] == 2
+
+            report = client.get("/backorders", headers=_auth(finance_token))
+            assert report.status_code == 200
+            rows = [r for r in report.json() if r["quotation_id"] == qid]
+            assert len(rows) == 1 and rows[0]["qty"] == 2 and rows[0]["status"] == "open"
+
+            # "Accept Suggested Split" re-derives allocation from live stock
+            # across every warehouse (not just the one the override pinned
+            # to) -- with ample stock elsewhere, this resolves the shortfall
+            # and the persisted Backorder row must clear along with it.
+            reset = client.post(f"/fulfillment/{qid}/reset", headers=_auth(finance_token))
+            assert reset.status_code == 200
+            assert reset.json()["backorders"] == []
+
+            report_after = client.get("/backorders", headers=_auth(finance_token))
+            assert not any(r["quotation_id"] == qid for r in report_after.json())
+        finally:
+            _cleanup_quotation(db, qid)
+
+    def test_rep_cannot_read_backorders(self, rep_token):
+        resp = client.get("/backorders", headers=_auth(rep_token))
+        assert resp.status_code == 403
+
+
+class TestRestockResolvesBackorder:
+    @pytest.fixture()
+    def test_warehouse(self, db, admin_token):
+        created = client.post(
+            "/warehouses", headers=_auth(admin_token),
+            json={
+                "name": "Test Restock Depot", "stock": [{"product_id": "TEST-RESTOCK-SKU", "qty": 1}],
+                "shipping_cost_per_unit": 0, "shipment_fixed_cost": 0, "replenishment_rules": {},
+            },
+        ).json()
+        yield created["id"]
+        db.query(Warehouse).filter(Warehouse.id == created["id"]).delete()
+        db.commit()
+
+    def test_restock_resolves_open_backorder(self, db, rep_token, finance_token, test_warehouse):
+        qid = client.post(
+            "/quotations", headers=_auth(rep_token),
+            json={
+                "customer_name": "Delta LLC", "customer_tier": "Bronze",
+                "lines": [{"product_id": "TEST-RESTOCK-SKU", "category": "Hardware", "qty": 3, "unit_price": 1, "discount_pct": 0}],
+            },
+        ).json()["id"]
+        try:
+            override = client.post(
+                f"/fulfillment/{qid}/override", headers=_auth(finance_token),
+                json=[{"product_id": "TEST-RESTOCK-SKU", "warehouse_id": test_warehouse, "qty": 1}],
+            )
+            assert override.status_code == 200, override.text
+            assert override.json()["backorders"][0]["qty"] == 2
+
+            # A manual override is frozen and skipped by the restock resync
+            # by design (it's Finance's authoritative choice) -- release it
+            # back to auto first so there's something the resync can touch.
+            client.post(f"/fulfillment/{qid}/reset", headers=_auth(finance_token))
+
+            restock = client.post(
+                f"/warehouses/{test_warehouse}/restock", headers=_auth(finance_token),
+                json={"product_id": "TEST-RESTOCK-SKU", "qty": 5},
+            )
+            assert restock.status_code == 200, restock.text
+            restocked_qty = next(
+                s["qty"] for s in restock.json()["stock"] if s["product_id"] == "TEST-RESTOCK-SKU"
+            )
+            assert restocked_qty == 6  # 1 existing + 5 received
+
+            report_after = client.get("/backorders", headers=_auth(finance_token))
+            assert not any(r["quotation_id"] == qid for r in report_after.json())
+        finally:
+            _cleanup_quotation(db, qid)

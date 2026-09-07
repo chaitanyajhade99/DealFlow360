@@ -1,23 +1,30 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Layers, ShieldCheck, ArrowRight, Lock, Mail, Info, Loader2 } from "lucide-react";
+import {
+  Zap, ArrowRight, Lock, Mail, Info, Loader2, ShieldCheck, Eye, EyeOff,
+} from "lucide-react";
 import { useRole } from "../context/RoleContext";
 import { useToast } from "../context/ToastContext";
 
 const INTERNAL_PERSONAS = [
-  { email: "j.rao@dealflow360.example", label: "J. Rao", role: "Sales Rep" },
-  { email: "m.shah@dealflow360.example", label: "M. Shah", role: "Sales Manager" },
-  { email: "k.iyer@dealflow360.example", label: "K. Iyer", role: "Finance" },
-  { email: "admin@dealflow360.example", label: "Admin", role: "Admin" },
+  { email: "j.rao@dealflow360.example",    label: "J. Rao",    role: "Sales Rep",      color: "bg-sky-500" },
+  { email: "m.shah@dealflow360.example",   label: "M. Shah",   role: "Sales Manager",  color: "bg-indigo-500" },
+  { email: "k.iyer@dealflow360.example",   label: "K. Iyer",   role: "Finance",        color: "bg-emerald-500" },
+  { email: "admin@dealflow360.example",    label: "Admin",     role: "Admin",          color: "bg-violet-500" },
 ];
+
+function initials(label) {
+  return label.split(" ").map((w) => w[0]).join("").toUpperCase();
+}
 
 export default function Login() {
   const navigate = useNavigate();
   const { loginInternal, loginPortal } = useRole();
   const { toast } = useToast();
-  const [mode, setMode] = useState("internal"); // "internal" | "portal"
+  const [mode, setMode] = useState("internal");
   const [email, setEmail] = useState("j.rao@dealflow360.example");
   const [password, setPassword] = useState("password123");
+  const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -41,141 +48,218 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white shadow-md">
-          <Layers className="h-6 w-6 stroke-[2.5]" />
+    <div className="min-h-screen flex font-sans bg-canvas">
+
+      {/* ── Left brand panel ─────────────────────────────────────────── */}
+      <div className="hidden lg:flex lg:w-[480px] xl:w-[520px] flex-col justify-between
+                      bg-[#0f172a] p-10 relative overflow-hidden shrink-0">
+        {/* Background pattern */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-brand-600/10 blur-3xl -translate-y-1/2 translate-x-1/2" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 rounded-full bg-brand-600/5  blur-3xl  translate-y-1/2 -translate-x-1/3" />
         </div>
-        <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-900">DealFlow360</h1>
-        <p className="mt-1 text-xs text-slate-500 font-medium">
-          End-to-End B2B Sales Operations & Governance Platform
-        </p>
+
+        {/* Logo */}
+        <div className="relative flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600">
+            <Zap className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <div className="text-lg font-bold text-white tracking-tight">QuoteIt</div>
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-white/40">
+              Sales Intelligence Platform
+            </div>
+          </div>
+        </div>
+
+        {/* Hero copy */}
+        <div className="relative">
+          <h1 className="text-3xl font-bold text-white leading-tight tracking-tight">
+            From Quote to Closure,{" "}
+            <span className="text-brand-400">Intelligently.</span>
+          </h1>
+          <p className="mt-4 text-sm text-white/60 leading-relaxed max-w-sm">
+            AI-powered discount governance, automatic approval routing, multi-warehouse fulfillment,
+            and real-time deal health — all in one platform.
+          </p>
+
+          {/* Feature bullets */}
+          <ul className="mt-8 space-y-3">
+            {[
+              "Intelligent discount governance & approval chains",
+              "AI upsell / cross-sell recommendations",
+              "Multi-warehouse fulfillment orchestration",
+              "Customer negotiation portal",
+              "Deal health monitoring & anomaly detection",
+            ].map((f) => (
+              <li key={f} className="flex items-center gap-2.5 text-[12px] text-white/70">
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand-600/30 text-brand-400 text-[9px]">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="relative text-[11px] text-white/25 font-medium">
+          Intelligent B2B Sales Operations · Hackathon Demo
+        </div>
       </div>
 
-      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
-        <div className="rounded-2xl border border-slate-200/90 bg-white p-6 sm:p-8 shadow-md">
-          <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 mb-5">
-            <button
-              type="button"
-              onClick={() => {
-                setMode("internal");
-                setEmail("j.rao@dealflow360.example");
-                setPassword("password123");
-              }}
-              className={`rounded-md py-2 text-xs font-bold transition-all ${
-                mode === "internal" ? "bg-white text-brand-700 shadow-xs" : "text-slate-500"
-              }`}
-            >
-              Internal Console
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode("portal");
-                setEmail("procurement@acme.example");
-                setPassword("password123");
-              }}
-              className={`rounded-md py-2 text-xs font-bold transition-all ${
-                mode === "portal" ? "bg-white text-indigo-700 shadow-xs" : "text-slate-500"
-              }`}
-            >
-              Customer Portal
-            </button>
+      {/* ── Right form panel ─────────────────────────────────────────── */}
+      <div className="flex flex-1 flex-col justify-center items-center p-6 sm:p-10">
+
+        {/* Mobile logo */}
+        <div className="flex lg:hidden items-center gap-2 mb-8">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600">
+            <Zap className="h-5 w-5 text-white" />
+          </div>
+          <div className="text-lg font-bold text-ink tracking-tight">QuoteIt</div>
+        </div>
+
+        <div className="w-full max-w-[400px]">
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-ink tracking-tight">Sign in</h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              {mode === "internal"
+                ? "Access the QuoteIt Sales Operations Console"
+                : "Access your Customer Negotiation Portal"}
+            </p>
+          </div>
+
+          {/* Mode toggle */}
+          <div className="flex rounded-lg border border-line bg-surface-muted p-1 mb-6 gap-1">
+            {[
+              { id: "internal", label: "Internal Console" },
+              { id: "portal",   label: "Customer Portal"  },
+            ].map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setMode(id);
+                  setEmail(id === "internal" ? "j.rao@dealflow360.example" : "procurement@acme.example");
+                  setPassword("password123");
+                }}
+                className={`flex-1 rounded-md py-2 text-xs font-semibold transition-all duration-150 ${
+                  mode === id
+                    ? "bg-surface shadow-xs text-ink"
+                    : "text-ink-muted hover:text-ink"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Email */}
             <div>
-              <label className="df-label">Email Address</label>
+              <label className="qit-label" htmlFor="email">Email address</label>
               <div className="relative">
-                <Mail className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
+                <Mail className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-ink-muted" />
                 <input
+                  id="email"
+                  type="email"
                   aria-label="Email address"
-                  className="df-input pl-9 text-xs"
+                  className="qit-input pl-9 text-sm"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="username"
+                  required
                 />
               </div>
             </div>
 
+            {/* Password */}
             <div>
-              <label className="df-label">Password</label>
+              <label className="qit-label" htmlFor="password">Password</label>
               <div className="relative">
-                <Lock className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
+                <Lock className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-ink-muted" />
                 <input
+                  id="password"
+                  type={showPw ? "text" : "password"}
                   aria-label="Password"
-                  className="df-input pl-9 text-xs font-mono"
-                  type="password"
+                  className="qit-input pl-9 pr-9 font-mono text-sm"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
+                  required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="absolute right-3 top-2.5 text-ink-muted hover:text-ink transition-colors"
+                  aria-label={showPw ? "Hide password" : "Show password"}
+                >
+                  {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 
+            {/* Persona quick-select (internal only) */}
             {mode === "internal" && (
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {INTERNAL_PERSONAS.map((p) => (
-                  <button
-                    type="button"
-                    key={p.email}
-                    onClick={() => {
-                      setEmail(p.email);
-                      setPassword("password123");
-                    }}
-                    className={`rounded-lg border px-3 py-2 text-left transition-all ${
-                      email === p.email
-                        ? "border-brand-500 bg-brand-50/50 text-brand-900 ring-1 ring-brand-500"
-                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="text-[11px] font-bold">{p.label}</div>
-                    <div className="text-[10px] text-slate-500">{p.role}</div>
-                  </button>
-                ))}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                  Quick select demo persona
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {INTERNAL_PERSONAS.map((p) => (
+                    <button
+                      type="button"
+                      key={p.email}
+                      onClick={() => { setEmail(p.email); setPassword("password123"); }}
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs
+                        transition-all duration-150 ${
+                        email === p.email
+                          ? "border-brand-400 bg-brand-50 text-brand-900 ring-1 ring-brand-400"
+                          : "border-line bg-surface text-ink-secondary hover:border-line-strong hover:bg-surface-muted"
+                      }`}
+                    >
+                      <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${p.color} text-white text-[9px] font-bold`}>
+                        {initials(p.label)}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-[11px]">{p.label}</div>
+                        <div className="text-[10px] text-ink-muted">{p.role}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={submitting}
-                className={`w-full py-2.5 text-xs font-bold gap-1.5 ${
-                  mode === "internal" ? "df-btn-primary" : "df-btn-secondary"
-                }`}
-                aria-label={mode === "internal" ? "Login to internal operations console" : "Login to customer portal"}
-              >
-                {submitting ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : mode === "internal" ? (
-                  <>
-                    <span>Enter Sales Operations Console</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                    <span>Open Customer Negotiation Portal</span>
-                  </>
-                )}
-              </button>
-            </div>
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="qit-btn-primary qit-btn-lg w-full mt-2"
+              aria-label={mode === "internal" ? "Sign in to the sales console" : "Sign in to the customer portal"}
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : mode === "internal" ? (
+                <>Enter Sales Console <ArrowRight className="h-4 w-4" /></>
+              ) : (
+                <><ShieldCheck className="h-4 w-4" /> Open Customer Portal</>
+              )}
+            </button>
           </form>
 
-          <div className="mt-5 flex items-start gap-2.5 rounded-lg border border-sky-200 bg-sky-50/70 p-3 text-[11px] text-sky-900">
-            <Info className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
-            <div>
-              <b>Live backend:</b> this form calls the real{" "}
-              <code className="font-mono">POST /auth/login</code> /{" "}
-              <code className="font-mono">POST /portal/login</code> endpoints and stores a
-              real JWT. Password for every seeded account is <code className="font-mono">password123</code>.
+          {/* Info note */}
+          <div className="mt-5 qit-alert qit-alert-info">
+            <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+            <div className="text-[11px]">
+              <b>Live backend:</b> Calls real{" "}
+              <code className="font-mono bg-blue-100 px-1 rounded">POST /auth/login</code>{" "}
+              endpoint. Password for all demo accounts:{" "}
+              <code className="font-mono bg-blue-100 px-1 rounded">password123</code>
             </div>
           </div>
 
-          <p className="mt-4 text-center text-xs text-slate-500">
-            New here?{" "}
-            <Link to="/signup" className="font-bold text-brand-700 hover:underline">
-              Create an account
+          <p className="mt-5 text-center text-xs text-ink-muted">
+            New company?{" "}
+            <Link to="/signup" className="font-semibold text-brand-600 hover:underline">
+              Request portal access
             </Link>
           </p>
         </div>

@@ -1,19 +1,56 @@
+/* =====================================================================
+   QuoteIt — Global Design System CSS
+   "Executive Precision" — inspired by Linear/Stripe
+   ===================================================================== */
+
+/* ---- Google Fonts --------------------------------------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ---- CSS Custom Properties ------------------------------------------ */
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #0f172a;
-  background-color: #f8fafc;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --font-sans:  "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono:  "JetBrains Mono", "Fira Code", monospace;
+
+  /* Brand */
+  --color-brand:     #4f46e5;
+  --color-brand-dim: #4338ca;
+  --color-canvas:    #f8f9ff;
+  --color-surface:   #ffffff;
+  --color-sidebar:   #0f172a;
+
+  /* Text */
+  --color-ink:       #0b1c30;
+  --color-muted:     #64748b;
+
+  /* Sidebar dims */
+  --sidebar-w:       240px;
+  --sidebar-icon-w:  64px;
+  --topbar-h:        56px;
 }
 
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; background-color: #f8fafc; color: #0f172a; }
+/* ---- Reset ----------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
 button, input, select, textarea { font: inherit; }
 button {
   cursor: pointer;
@@ -24,74 +61,396 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 button:active { color: inherit; }
+a { color: inherit; }
 
+/* ---- Application Shell Layout --------------------------------------- */
+.qit-shell {
+  display: flex;
+  min-height: 100vh;
+  background-color: var(--color-canvas);
+}
+
+/* Sidebar */
+.qit-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: var(--sidebar-w);
+  background-color: var(--color-sidebar);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Main wrapper with sidebar offset */
+.qit-main-wrapper {
+  flex: 1;
+  margin-left: var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Top bar */
+.qit-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: var(--topbar-h);
+  background-color: var(--color-surface);
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 12px;
+}
+
+/* Content area */
+.qit-content {
+  flex: 1;
+  padding: 24px;
+  max-width: 1440px;
+  width: 100%;
+}
+
+/* ---- Stagger animations -------------------------------------------- */
+.animate-stagger-1  { animation: fade-slide-in 0.25s cubic-bezier(0.16,1,0.3,1) 0.03s  both; }
+.animate-stagger-2  { animation: fade-slide-in 0.25s cubic-bezier(0.16,1,0.3,1) 0.06s  both; }
+.animate-stagger-3  { animation: fade-slide-in 0.25s cubic-bezier(0.16,1,0.3,1) 0.09s  both; }
+.animate-stagger-4  { animation: fade-slide-in 0.25s cubic-bezier(0.16,1,0.3,1) 0.12s  both; }
+.animate-stagger-5  { animation: fade-slide-in 0.25s cubic-bezier(0.16,1,0.3,1) 0.15s  both; }
+.animate-stagger-6  { animation: fade-slide-in 0.25s cubic-bezier(0.16,1,0.3,1) 0.18s  both; }
+
+@keyframes fade-slide-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* ---- Skeleton shimmer keyframe ------------------------------------- */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* ---- Scrollbar ---------------------------------------------------- */
+::-webkit-scrollbar            { width: 5px; height: 5px; }
+::-webkit-scrollbar-track      { background: transparent; }
+::-webkit-scrollbar-thumb      { background: #cbd5e1; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover{ background: #94a3b8; }
+
+/* Sidebar scrollbar */
+.qit-sidebar::-webkit-scrollbar       { width: 3px; }
+.qit-sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+
+/* ===================================================================
+   COMPONENT LAYER
+   =================================================================== */
+@layer components {
+
+  /* ---- Panels / Cards -------------------------------------------- */
+  .qit-panel {
+    @apply rounded-lg border border-line bg-surface;
+  }
+  .qit-card {
+    @apply rounded-lg border border-line bg-surface transition-shadow duration-150 hover:shadow-sm;
+  }
+  .qit-card-interactive {
+    @apply rounded-lg border border-line bg-surface transition-all duration-150 cursor-pointer
+           hover:shadow-sm hover:border-brand-300 hover:-translate-y-px;
+  }
+
+  /* ---- KPI / Stat Cards ------------------------------------------ */
+  .qit-stat-card {
+    @apply rounded-lg border border-line bg-surface p-5
+           transition-all duration-150 hover:shadow-sm hover:border-brand-200;
+  }
+  .qit-stat-value {
+    @apply text-[28px] font-bold tracking-tight text-ink leading-none;
+  }
+  .qit-stat-label {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-ink-muted;
+  }
+  .qit-stat-hint {
+    @apply text-[11px] font-medium text-ink-muted mt-1;
+  }
+
+  /* ---- Panel header utility -------------------------------------- */
+  .qit-panel-header {
+    @apply flex items-center justify-between px-5 py-3.5 border-b border-line;
+  }
+  .qit-panel-title {
+    @apply text-sm font-semibold text-ink;
+  }
+  .qit-panel-body {
+    @apply p-5;
+  }
+
+  /* ---- Typography ----------------------------------------------- */
+  .qit-page-title {
+    @apply text-xl font-bold tracking-tight text-ink;
+  }
+  .qit-section-title {
+    @apply text-sm font-semibold text-ink;
+  }
+  .qit-caption {
+    @apply text-[11px] font-medium text-ink-muted;
+  }
+  .qit-label {
+    @apply block mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-muted;
+  }
+
+  /* ---- Buttons -------------------------------------------------- */
+  .qit-btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2
+           text-xs font-semibold tracking-wide select-none
+           transition-all duration-150 active:scale-[0.98]
+           disabled:opacity-50 disabled:pointer-events-none
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1;
+  }
+  .qit-btn-primary {
+    @apply qit-btn bg-brand-600 text-white shadow-sm
+           hover:bg-brand-700 focus-visible:ring-brand-500;
+  }
+  .qit-btn-secondary {
+    @apply qit-btn border border-line bg-surface text-ink-secondary shadow-xs
+           hover:bg-surface-muted hover:border-line-strong focus-visible:ring-brand-300;
+  }
+  .qit-btn-ghost {
+    @apply qit-btn text-ink-muted hover:bg-surface-muted hover:text-ink focus-visible:ring-brand-300;
+  }
+  .qit-btn-danger {
+    @apply qit-btn border border-red-200 bg-red-50 text-red-700
+           hover:bg-red-100 hover:border-red-300 focus-visible:ring-red-400;
+  }
+  .qit-btn-success {
+    @apply qit-btn bg-emerald-600 text-white shadow-sm
+           hover:bg-emerald-700 focus-visible:ring-emerald-500;
+  }
+  .qit-btn-warning {
+    @apply qit-btn bg-amber-500 text-white shadow-sm
+           hover:bg-amber-600 focus-visible:ring-amber-400;
+  }
+  /* Size variants */
+  .qit-btn-sm {
+    @apply px-2.5 py-1.5 text-[11px];
+  }
+  .qit-btn-lg {
+    @apply px-5 py-2.5 text-sm;
+  }
+  .qit-btn-icon {
+    @apply qit-btn p-2 aspect-square;
+  }
+
+  /* ---- Inputs --------------------------------------------------- */
+  .qit-input {
+    @apply w-full rounded-md border border-line bg-surface px-3 py-2
+           text-sm text-ink shadow-xs outline-none
+           placeholder:text-ink-subtle
+           transition duration-150
+           focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+  }
+  .qit-select {
+    @apply qit-input cursor-pointer appearance-none;
+  }
+  .qit-textarea {
+    @apply qit-input resize-none;
+  }
+
+  /* ---- Badges --------------------------------------------------- */
+  .qit-badge {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5
+           text-[11px] font-semibold tracking-tight;
+  }
+  .qit-badge-pill {
+    @apply qit-badge rounded-full;
+  }
+  /* Status badge colors */
+  .qit-badge-green  { @apply bg-emerald-50 text-emerald-700 border border-emerald-200; }
+  .qit-badge-amber  { @apply bg-amber-50   text-amber-700   border border-amber-200;  }
+  .qit-badge-red    { @apply bg-red-50     text-red-700     border border-red-200;    }
+  .qit-badge-blue   { @apply bg-blue-50    text-blue-700    border border-blue-200;   }
+  .qit-badge-indigo { @apply bg-indigo-50  text-indigo-700  border border-indigo-200; }
+  .qit-badge-slate  { @apply bg-slate-100  text-slate-700   border border-slate-200;  }
+  .qit-badge-violet { @apply bg-violet-50  text-violet-700  border border-violet-200; }
+
+  /* ---- Tables --------------------------------------------------- */
+  .qit-table {
+    @apply w-full text-left text-sm border-collapse;
+  }
+  .qit-table th {
+    @apply border-b border-line bg-surface-muted px-4 py-2.5
+           text-[11px] font-semibold uppercase tracking-wider text-ink-muted select-none;
+  }
+  .qit-table td {
+    @apply border-b border-line-subtle px-4 py-3 align-middle text-ink-secondary;
+  }
+  .qit-table tr { @apply transition-colors; }
+  .qit-table tr:hover td { @apply bg-surface-muted/50; }
+  .qit-table tr:last-child td { @apply border-b-0; }
+
+  /* ---- Sidebar nav item ----------------------------------------- */
+  .qit-nav-item {
+    @apply relative flex items-center gap-2.5 rounded-md px-3 py-2
+           text-[13px] font-medium text-sidebar-text
+           transition-colors duration-100 cursor-pointer select-none;
+  }
+  .qit-nav-item:hover {
+    background-color: rgba(255,255,255,0.06);
+    color: white;
+  }
+  .qit-nav-item.active {
+    background-color: rgba(79,70,229,0.20);
+    color: white;
+  }
+  .qit-nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 16px;
+    background-color: #6366f1;
+    border-radius: 0 2px 2px 0;
+  }
+  .qit-nav-section {
+    @apply px-3 pt-5 pb-1.5 text-[10px] font-bold uppercase tracking-widest;
+    color: rgba(255,255,255,0.3);
+  }
+
+  /* ---- Dividers -------------------------------------------------- */
+  .qit-divider { @apply border-t border-line; }
+  .qit-divider-subtle { @apply border-t border-line-subtle; }
+
+  /* ---- Intelligence / AI panel ---------------------------------- */
+  .qit-intel-card {
+    @apply rounded-lg border border-indigo-200 bg-indigo-50 p-4;
+  }
+  .qit-intel-title {
+    @apply text-xs font-bold uppercase tracking-wider text-indigo-700 mb-2;
+  }
+
+  /* ---- Risk indicators ------------------------------------------ */
+  .qit-risk-high   { @apply text-red-700    bg-red-50    border-red-200;    }
+  .qit-risk-medium { @apply text-amber-700  bg-amber-50  border-amber-200;  }
+  .qit-risk-low    { @apply text-emerald-700 bg-emerald-50 border-emerald-200; }
+
+  /* ---- Empty state ---------------------------------------------- */
+  .qit-empty {
+    @apply flex flex-col items-center justify-center py-16 text-center;
+  }
+  .qit-empty-icon {
+    @apply flex h-14 w-14 items-center justify-center rounded-full
+           bg-surface-muted text-ink-subtle mb-4;
+  }
+  .qit-empty-title {
+    @apply text-sm font-semibold text-ink mb-1;
+  }
+  .qit-empty-body {
+    @apply text-xs text-ink-muted max-w-xs;
+  }
+
+  /* ---- Skeleton ------------------------------------------------- */
+  .qit-skeleton {
+    @apply rounded bg-slate-100 overflow-hidden;
+    background-image: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+
+  /* ---- Toast ---------------------------------------------------- */
+  .qit-toast {
+    @apply fixed bottom-5 right-5 z-[9999] max-w-sm rounded-lg border
+           bg-surface px-4 py-3 shadow-xl
+           text-sm font-medium text-ink animate-toast-in;
+  }
+
+  /* ---- Modal backdrop ------------------------------------------- */
+  .qit-modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center
+           bg-slate-900/60 backdrop-blur-sm p-4;
+  }
+  .qit-modal {
+    @apply relative w-full max-w-md rounded-xl bg-surface p-6
+           shadow-modal border border-line animate-fade-slide-in;
+  }
+  .qit-modal-header {
+    @apply flex items-center justify-between border-b border-line pb-3 mb-5;
+  }
+  .qit-modal-title {
+    @apply text-base font-semibold text-ink;
+  }
+
+  /* ---- Tabs ----------------------------------------------------- */
+  .qit-tabs {
+    @apply flex items-center gap-1 border-b border-line;
+  }
+  .qit-tab {
+    @apply px-4 py-2.5 text-xs font-semibold text-ink-muted border-b-2 border-transparent
+           -mb-px transition-colors cursor-pointer select-none
+           hover:text-ink hover:border-line-strong;
+  }
+  .qit-tab.active {
+    @apply text-brand-600 border-brand-600;
+  }
+
+  /* ---- Alerts / banners ----------------------------------------- */
+  .qit-alert {
+    @apply flex items-start gap-3 rounded-lg border px-4 py-3 text-xs;
+  }
+  .qit-alert-info    { @apply border-blue-200   bg-blue-50   text-blue-900;   }
+  .qit-alert-success { @apply border-emerald-200 bg-emerald-50 text-emerald-900; }
+  .qit-alert-warning { @apply border-amber-300  bg-amber-50  text-amber-900;  }
+  .qit-alert-danger  { @apply border-red-300    bg-red-50    text-red-900;    }
+  .qit-alert-indigo  { @apply border-indigo-200 bg-indigo-50 text-indigo-900; }
+
+  /* ---- Progress bar --------------------------------------------- */
+  .qit-progress-track {
+    @apply h-1.5 w-full rounded-full bg-surface-border overflow-hidden;
+  }
+  .qit-progress-fill {
+    @apply h-full rounded-full transition-all duration-500;
+  }
+
+  /* ---- Stepper -------------------------------------------------- */
+  .qit-stepper-node {
+    @apply flex h-7 w-7 items-center justify-center rounded-full
+           text-[11px] font-bold transition-all duration-200;
+  }
+  .qit-stepper-line {
+    @apply flex-1 h-0.5 transition-colors duration-200;
+  }
+
+  /* ---- Legacy df- aliases (backward compat with existing screens) -- */
+  .df-panel      { @apply qit-panel; }
+  .df-card       { @apply qit-card; }
+  .df-input      { @apply qit-input; }
+  .df-label      { @apply qit-label; }
+  .df-btn        { @apply qit-btn; }
+  .df-btn-primary   { @apply qit-btn-primary; }
+  .df-btn-secondary { @apply qit-btn-secondary; }
+  .df-btn-danger    { @apply qit-btn-danger; }
+  .df-btn-success   { @apply qit-btn-success; }
+  .df-badge      { @apply qit-badge; }
+  .df-table      { @apply qit-table; }
+  .df-table th   { /* handled by .qit-table th above */ }
+  .df-table td   { /* handled by .qit-table td above */ }
+
+} /* end @layer components */
+
+/* ---- Utility extras ------------------------------------------------- */
 @layer utilities {
   .shadow-xs {
     box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
   }
+  .text-balance { text-wrap: balance; }
+
+  /* Numeric font variant for tabular data */
+  .tabular { font-variant-numeric: tabular-nums; }
 }
-
-@layer components {
-  .df-panel {
-    @apply rounded-xl border border-slate-200/80 bg-white shadow-sm transition-all duration-200;
-  }
-  .df-card {
-    @apply rounded-lg border border-slate-200/80 bg-white shadow-sm transition-all duration-200 hover:shadow-md hover:border-slate-300;
-  }
-  .df-input {
-    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition duration-150 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 placeholder:text-slate-400;
-  }
-  .df-label {
-    @apply mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500;
-  }
-  .df-btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
-  }
-  .df-btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none bg-brand-600 text-white shadow-sm hover:bg-brand-700 focus:ring-2 focus:ring-brand-500 focus:ring-offset-1;
-  }
-  .df-btn-secondary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-400 focus:ring-2 focus:ring-slate-300;
-  }
-  .df-btn-danger {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none border border-red-200 bg-red-50 text-red-700 shadow-sm hover:bg-red-100 hover:border-red-300 focus:ring-2 focus:ring-red-400;
-  }
-  .df-btn-success {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold tracking-wide transition-all duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 focus:ring-2 focus:ring-emerald-500;
-  }
-  .df-badge {
-    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-tight transition-colors;
-  }
-  .df-table {
-    @apply w-full text-left text-sm border-collapse;
-  }
-  .df-table th {
-    @apply border-b border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 select-none;
-  }
-  .df-table td {
-    @apply border-b border-slate-100 px-3.5 py-3 align-middle text-slate-700 transition-colors;
-  }
-  .df-table tr {
-    @apply transition-colors;
-  }
-  .df-table tr:hover td {
-    @apply bg-slate-50/60;
-  }
-  .df-table tr:last-child td {
-    @apply border-b-0;
-  }
-}
-
-/* Stagger animations */
-.animate-stagger-1 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.03s forwards; opacity: 0; }
-.animate-stagger-2 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.06s forwards; opacity: 0; }
-.animate-stagger-3 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.09s forwards; opacity: 0; }
-.animate-stagger-4 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.12s forwards; opacity: 0; }
-.animate-stagger-5 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards; opacity: 0; }
-.animate-stagger-6 { animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) 0.18s forwards; opacity: 0; }
-
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-

@@ -16,6 +16,7 @@ import ApprovalsList from "./screens/ApprovalsList";
 import ApprovalDetail from "./screens/ApprovalDetail";
 import FulfillmentList from "./screens/FulfillmentList";
 import FulfillmentDetail from "./screens/FulfillmentDetail";
+import BackordersList from "./screens/BackordersList";
 import SubscriptionsList from "./screens/SubscriptionsList";
 import BillingDetail from "./screens/BillingDetail";
 import PortalNegotiation from "./screens/PortalNegotiation";
@@ -51,6 +52,10 @@ function App() {
           <Route path="approvals/:id" element={<ApprovalDetail />} />
           <Route path="fulfillment" element={<FulfillmentList />} />
           <Route path="fulfillment/:id" element={<FulfillmentDetail />} />
+          <Route
+            path="backorders"
+            element={<RoleRouteGuard allow={["finance", "admin"]}><BackordersList /></RoleRouteGuard>}
+          />
           <Route path="subscriptions" element={<SubscriptionsList />} />
           <Route path="billing/:id" element={<BillingDetail />} />
           <Route

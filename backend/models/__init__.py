@@ -1,7 +1,7 @@
 from models.database import Base, SessionLocal, engine, get_db
 from models.quotation import Quotation, QuotationLine
 from models.approval import Approval
-from models.warehouse import Warehouse, FulfillmentSplit
+from models.warehouse import Warehouse, FulfillmentSplit, Backorder
 from models.subscription import Subscription
 from models.invoice import Invoice
 from models.discount_tier import DiscountTier
@@ -24,6 +24,7 @@ __all__ = [
     "Approval",
     "Warehouse",
     "FulfillmentSplit",
+    "Backorder",
     "Subscription",
     "Invoice",
     "DiscountTier",

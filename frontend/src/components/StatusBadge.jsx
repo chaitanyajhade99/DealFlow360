@@ -1,35 +1,43 @@
-const map = {
-  draft: { bg: "bg-slate-100 text-slate-700 border border-slate-200", dot: "bg-slate-400", label: "Draft" },
-  pending_approval: { bg: "bg-amber-50 text-amber-800 border border-amber-200/80", dot: "bg-amber-500", label: "Pending approval" },
-  approved: { bg: "bg-emerald-50 text-emerald-800 border border-emerald-200/80", dot: "bg-emerald-500", label: "Approved" },
-  confirmed: { bg: "bg-emerald-50 text-emerald-800 border border-emerald-200/80", dot: "bg-emerald-500", label: "Confirmed" },
-  fulfillment: { bg: "bg-sky-50 text-sky-800 border border-sky-200/80", dot: "bg-sky-500", label: "Fulfillment" },
-  invoiced: { bg: "bg-indigo-50 text-indigo-800 border border-indigo-200/80", dot: "bg-indigo-500", label: "Invoiced" },
-  paid: { bg: "bg-emerald-50 text-emerald-800 border border-emerald-200/80", dot: "bg-emerald-500", label: "Paid" },
-  cancelled: { bg: "bg-rose-50 text-rose-800 border border-rose-200/80", dot: "bg-rose-500", label: "Cancelled" },
-  unpaid: { bg: "bg-amber-50 text-amber-800 border border-amber-200/80", dot: "bg-amber-500", label: "Unpaid" },
-  active: { bg: "bg-emerald-50 text-emerald-800 border border-emerald-200/80", dot: "bg-emerald-500", label: "Active" },
-  HIGH: { bg: "bg-red-50 text-red-800 border border-red-200/80", dot: "bg-red-500", label: "High risk" },
-  MEDIUM: { bg: "bg-amber-50 text-amber-800 border border-amber-200/80", dot: "bg-amber-500", label: "Medium risk" },
-  LOW: { bg: "bg-emerald-50 text-emerald-800 border border-emerald-200/80", dot: "bg-emerald-500", label: "Low risk" },
-  pending: { bg: "bg-amber-50 text-amber-800 border border-amber-200/80", dot: "bg-amber-500", label: "Pending" },
-  rejected: { bg: "bg-rose-50 text-rose-800 border border-rose-200/80", dot: "bg-rose-500", label: "Rejected" },
-  returned: { bg: "bg-orange-50 text-orange-800 border border-orange-200/80", dot: "bg-orange-500", label: "Returned" },
-  resolved: { bg: "bg-emerald-50 text-emerald-800 border border-emerald-200/80", dot: "bg-emerald-500", label: "Resolved" },
+/* QuoteIt — Status badge with dot indicator */
+
+const STATUS_MAP = {
+  // Quotation statuses
+  draft:            { cls: "bg-slate-100 text-slate-700 border-slate-200",  dot: "bg-slate-400",  label: "Draft" },
+  pending_approval: { cls: "bg-amber-50  text-amber-800  border-amber-200",  dot: "bg-amber-500",  label: "Pending Approval" },
+  approved:         { cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500", label: "Approved" },
+  confirmed:        { cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500", label: "Confirmed" },
+  negotiation:      { cls: "bg-indigo-50 text-indigo-800 border-indigo-200",  dot: "bg-indigo-500", label: "Negotiation" },
+  fulfillment:      { cls: "bg-sky-50    text-sky-800    border-sky-200",     dot: "bg-sky-500",    label: "Fulfillment" },
+  invoiced:         { cls: "bg-violet-50 text-violet-800 border-violet-200",  dot: "bg-violet-500", label: "Invoiced" },
+  paid:             { cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500", label: "Paid" },
+  cancelled:        { cls: "bg-rose-50   text-rose-800   border-rose-200",    dot: "bg-rose-500",   label: "Cancelled" },
+  rejected:         { cls: "bg-rose-50   text-rose-800   border-rose-200",    dot: "bg-rose-500",   label: "Rejected" },
+  returned:         { cls: "bg-orange-50 text-orange-800 border-orange-200",  dot: "bg-orange-500", label: "Returned" },
+  // Invoice/payment
+  unpaid:           { cls: "bg-amber-50  text-amber-800  border-amber-200",   dot: "bg-amber-500",  label: "Unpaid" },
+  // Subscription
+  active:           { cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500", label: "Active" },
+  pending:          { cls: "bg-amber-50  text-amber-800  border-amber-200",   dot: "bg-amber-500",  label: "Pending" },
+  resolved:         { cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500", label: "Resolved" },
+  // Risk level
+  HIGH:    { cls: "bg-red-50     text-red-800    border-red-200",    dot: "bg-red-500",    label: "High Risk" },
+  MEDIUM:  { cls: "bg-amber-50   text-amber-800  border-amber-200",  dot: "bg-amber-500",  label: "Medium Risk" },
+  LOW:     { cls: "bg-emerald-50 text-emerald-800 border-emerald-200", dot: "bg-emerald-500", label: "Low Risk" },
 };
 
 export default function StatusBadge({ value, className = "" }) {
-  const item = map[value] || {
-    bg: "bg-slate-100 text-slate-700 border border-slate-200",
+  const item = STATUS_MAP[value] || {
+    cls: "bg-slate-100 text-slate-700 border-slate-200",
     dot: "bg-slate-400",
     label: String(value || "—").replaceAll("_", " "),
   };
 
   return (
-    <span className={`df-badge ${item.bg} ${className}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${item.dot}`} aria-hidden="true" />
-      <span>{item.label}</span>
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${item.cls} ${className}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${item.dot} shrink-0`} aria-hidden="true" />
+      <span className="capitalize">{item.label}</span>
     </span>
   );
 }
-

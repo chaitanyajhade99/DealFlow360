@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Plus, Package, CheckCircle2, X } from "lucide-react";
-import { getWarehouses, createWarehouse, updateWarehouse } from "../../api/client";
+import { Plus, Package, CheckCircle2, X, PackagePlus } from "lucide-react";
+import { getWarehouses, createWarehouse, updateWarehouse, restockWarehouse } from "../../api/client";
 import AdminNav from "../../components/AdminNav";
 import Panel from "../../components/Panel";
 import Skeleton from "../../components/Skeleton";
@@ -59,6 +59,25 @@ export default function AdminWarehouses() {
     }
   };
 
+  // Unlike handleStockUpdate above (a raw overwrite -- for corrections),
+  // this is "goods received": adds to what's on hand and tries to
+  // auto-resolve any open backorders on this product across every affected
+  // quotation (see POST /warehouses/{id}/restock).
+  const handleReceiveStock = async (warehouse, productId, deltaStr) => {
+    const delta = Number(deltaStr);
+    if (!delta || delta <= 0) {
+      toast("Enter a positive quantity received.", "warning");
+      return;
+    }
+    try {
+      const updated = await restockWarehouse(warehouse.id, productId, delta);
+      setWarehouses((prev) => prev.map((w) => (w.id === warehouse.id ? updated : w)));
+      toast(`Received ${delta} unit(s) of ${productId}. Any open backorders it can now cover have been re-checked.`, "success");
+    } catch (err) {
+      toast(err.message || "Could not record received stock.", "error");
+    }
+  };
+
   if (loading) return <Skeleton variant="card" count={2} />;
 
   return (
@@ -96,15 +115,44 @@ export default function AdminWarehouses() {
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Stock Levels</div>
             <div className="space-y-1.5">
               {w.stock.map((s) => (
-                <div key={s.product_id} className="flex items-center justify-between text-xs">
-                  <span className="font-mono text-slate-700">{s.product_id}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    defaultValue={s.qty}
-                    onBlur={(e) => handleStockUpdate(w, s.product_id, e.target.value)}
-                    className="df-input w-24 py-1 text-xs font-mono"
-                  />
+                <div key={s.product_id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-mono text-slate-700 truncate" title={s.product_id}>{s.product_id}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <input
+                      type="number"
+                      min="0"
+                      defaultValue={s.qty}
+                      title="On-hand quantity — direct correction"
+                      onBlur={(e) => handleStockUpdate(w, s.product_id, e.target.value)}
+                      className="df-input w-20 py-1 text-xs font-mono"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="+qty"
+                      title="Units received — adds to stock and re-checks open backorders"
+                      className="df-input w-16 py-1 text-xs font-mono"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleReceiveStock(w, s.product_id, e.currentTarget.value);
+                          e.currentTarget.value = "";
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      title="Receive stock"
+                      aria-label={`Receive stock for ${s.product_id}`}
+                      className="rounded-lg p-1.5 text-brand-600 hover:bg-brand-50"
+                      onClick={(e) => {
+                        const input = e.currentTarget.previousSibling;
+                        handleReceiveStock(w, s.product_id, input.value);
+                        input.value = "";
+                      }}
+                    >
+                      <PackagePlus className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
               {!w.stock.length && <p className="text-[11px] text-slate-400">No stock rows yet.</p>}

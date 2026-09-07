@@ -1,19 +1,19 @@
-export default function Panel({ title, children, className = "", right }) {
+/* QuoteIt — Panel component */
+export default function Panel({ title, children, className = "", right, noPad = false }) {
   return (
-    <div className={`df-panel overflow-hidden border border-slate-200/90 bg-white shadow-xs hover:shadow-sm transition-shadow duration-200 ${className}`}>
+    <div className={`qit-panel overflow-hidden ${className}`}>
       {(title || right) && (
-        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/40 px-4 py-3 sm:px-5">
+        <div className="qit-panel-header">
           {title && (
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-sm bg-brand-600/80" aria-hidden="true" />
+            <h2 className="qit-panel-title flex items-center gap-2">
+              <span className="h-3 w-0.5 rounded-full bg-brand-500" aria-hidden="true" />
               {title}
             </h2>
           )}
-          {right && <div className="text-xs font-medium text-slate-600">{right}</div>}
+          {right && <div className="text-xs text-ink-muted">{right}</div>}
         </div>
       )}
-      <div className="p-4 sm:p-5">{children}</div>
+      <div className={noPad ? "" : "qit-panel-body"}>{children}</div>
     </div>
   );
 }
-
